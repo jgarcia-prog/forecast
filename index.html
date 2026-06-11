@@ -355,6 +355,9 @@ body {
 
 .btn-reset { color: var(--red) !important; border-color: var(--red) !important; }
 .btn-reset:hover { background: rgba(192,57,43,0.08) !important; }
+.btn-save { background: #1e3a8a !important; color: #fff !important; border-color: #1e3a8a !important; }
+.btn-save:hover { background: #1e40af !important; transform: translateY(-1px); }
+.btn-save.saved { background: var(--teal) !important; border-color: var(--teal) !important; }
 
 /* CONFIRM MODAL */
 #confirmModal {
@@ -506,6 +509,8 @@ body {
     <button class="btn btn-outline btn-reset" onclick="resetData()" title="Limpiar ajustes y volver a los datos originales">🔄 Depurar datos</button>
     <button class="btn btn-ai" onclick="openAIAnalysis()">🤖 Análisis AI</button>
     <button class="btn btn-gold" onclick="exportExcel()">↓ Exportar Excel</button>
+    <button class="btn btn-save" id="saveBtn" onclick="saveState()" title="Guardar estado actual">💾 Guardar</button>
+    <span id="saveIndicator" style="display:none;font-size:11px;color:var(--text3);margin-left:2px"></span>
   </div>
 </div>
 
@@ -1117,8 +1122,18 @@ document.addEventListener('DOMContentLoaded', () => {
   populateFilters();
   state.budgetTarget = RAW_DATA.presupuesto_q2;
   document.getElementById('budgetInput').value = Math.round(state.budgetTarget / 1e6);
+
+  // Restore last saved state (if any)
+  const restored = loadSavedState();
+
   renderBudgetBreakdown();
+  renderAdjPanels();
   render();
+
+  if (restored) {
+    document.getElementById('dataStatus').textContent = '● Estado restaurado';
+    document.getElementById('dataStatus').className = 'status-chip chip-ok';
+  }
 });
 
 function initAdjustments() {
@@ -2837,6 +2852,7 @@ function loadFile(input) {
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, { defval: 0 });
       processUploadedData(rows);
+      window._rawDataModified = true;
       document.getElementById('dataStatus').textContent = '● Datos actualizados';
       document.getElementById('dataStatus').className = 'status-chip chip-ok';
     } catch(err) {
@@ -3361,6 +3377,99 @@ async function callAI(prompt) {
   }
 }
 
+// ==================== PERSISTENCIA ====================
+const STORAGE_KEY = 'forecast_cofersa_state_v1';
+
+function saveState() {
+  const snapshot = {
+    savedAt: new Date().toISOString(),
+    state: {
+      adjustments:    state.adjustments,
+      adjVsQ22025:    state.adjVsQ22025,
+      budgetTarget:   state.budgetTarget,
+      blendWeight:    state.blendWeight,
+      smoothOutliers: state.smoothOutliers,
+      smoothSigma:    state.smoothSigma,
+      projWeights:    state.projWeights,
+      budgetWeights:  state.budgetWeights,
+      filterPortfolio: state.filterPortfolio,
+      filterVendedor:  state.filterVendedor,
+      filterMarca:     state.filterMarca
+    },
+    // Save RAW_DATA only if it was modified via file upload
+    rawDataModified: !!window._rawDataModified,
+    rawData: window._rawDataModified ? JSON.parse(JSON.stringify(RAW_DATA)) : null
+  };
+
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    const btn = document.getElementById('saveBtn');
+    const orig = btn.innerHTML;
+    btn.innerHTML = '✓ Guardado';
+    btn.classList.add('saved');
+    setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('saved'); }, 2000);
+    updateSaveIndicator(snapshot.savedAt);
+  } catch(e) {
+    alert('Error al guardar: ' + e.message);
+  }
+}
+
+function updateSaveIndicator(isoDate) {
+  const el = document.getElementById('saveIndicator');
+  if (!el || !isoDate) return;
+  const d = new Date(isoDate);
+  const str = d.toLocaleDateString('es-CR', {day:'2-digit', month:'short'}) + ' ' +
+               d.toLocaleTimeString('es-CR', {hour:'2-digit', minute:'2-digit'});
+  el.textContent = '💾 ' + str;
+  el.style.display = 'inline';
+}
+
+function loadSavedState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const snapshot = JSON.parse(raw);
+
+    // Restore RAW_DATA if it was saved
+    if (snapshot.rawDataModified && snapshot.rawData) {
+      Object.assign(RAW_DATA, snapshot.rawData);
+      window._rawDataModified = true;
+    }
+
+    // Restore state fields
+    const s = snapshot.state;
+    state.adjustments    = s.adjustments    || { vendedores:{}, marcas:{}, portafolios:{} };
+    state.adjVsQ22025    = s.adjVsQ22025    || {};
+    state.budgetTarget   = s.budgetTarget   || RAW_DATA.presupuesto_q2;
+    state.blendWeight    = s.blendWeight    ?? 0.60;
+    state.smoothOutliers = s.smoothOutliers ?? false;
+    state.smoothSigma    = s.smoothSigma    ?? 2.0;
+    state.projWeights    = s.projWeights    || null;
+    state.budgetWeights  = s.budgetWeights  || null;
+    state.filterPortfolio = s.filterPortfolio || 'all';
+    state.filterVendedor  = s.filterVendedor  || '';
+    state.filterMarca     = s.filterMarca     || '';
+
+    // Restore UI inputs
+    const budgetInput = document.getElementById('budgetInput');
+    if (budgetInput) budgetInput.value = Math.round(state.budgetTarget / 1e6);
+
+    const blendSlider = document.getElementById('blendSlider');
+    if (blendSlider) { blendSlider.value = Math.round(state.blendWeight * 100); updateBlendWeight(blendSlider.value); }
+
+    const smoothToggle = document.getElementById('smoothToggle');
+    if (smoothToggle) { smoothToggle.checked = state.smoothOutliers; }
+    const smoothSlider = document.getElementById('smoothSlider');
+    if (smoothSlider) smoothSlider.value = state.smoothSigma;
+
+    updateSaveIndicator(snapshot.savedAt);
+    return true;
+  } catch(e) {
+    console.warn('Error al cargar estado guardado:', e);
+    return false;
+  }
+}
+
 function resetData() {
   document.getElementById('confirmModal').classList.add('show');
 }
@@ -3374,6 +3483,8 @@ function doReset() {
 
   // 1. Restore original embedded data fully
   Object.assign(RAW_DATA, JSON.parse(JSON.stringify(ORIGINAL_RAW_DATA)));
+  window._rawDataModified = false;
+  localStorage.removeItem(STORAGE_KEY);
 
   // 2. Reset all adjustments
   state.adjustments = { vendedores: {}, marcas: {}, portafolios: {} };
