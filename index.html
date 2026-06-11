@@ -882,21 +882,19 @@ body {
         <div>
           <label style="font-size:11px;color:var(--text2);font-weight:600;display:block;margin-bottom:4px">TIPO DE CAMBIO</label>
           <select id="reasigTipo" onchange="toggleReasigForm()" style="width:100%;font-size:13px;padding:6px 10px">
-            <option value="cliente">Cliente cambia de zona</option>
+            <option value="cliente">Clientes específicos cambian de zona</option>
             <option value="vendedor">Reemplazo de vendedor (cartera completa)</option>
           </select>
         </div>
-        <div id="reasigClienteWrap">
-          <label style="font-size:11px;color:var(--text2);font-weight:600;display:block;margin-bottom:4px">CLIENTE</label>
-          <select id="reasigCliente" style="width:100%;font-size:13px;padding:6px 10px">
-            <option value="">— Seleccionar cliente —</option>
-          </select>
+        <div>
+          <label style="font-size:11px;color:var(--text2);font-weight:600;display:block;margin-bottom:4px">FECHA EFECTIVA</label>
+          <input type="month" id="reasigFecha" style="width:100%;font-size:13px;padding:6px 10px">
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
         <div>
           <label style="font-size:11px;color:var(--text2);font-weight:600;display:block;margin-bottom:4px">ZONA ANTERIOR (DE)</label>
-          <select id="reasigDe" style="width:100%;font-size:13px;padding:6px 10px">
+          <select id="reasigDe" onchange="filterClientesByZona()" style="width:100%;font-size:13px;padding:6px 10px">
             <option value="">— Zona origen —</option>
           </select>
         </div>
@@ -906,13 +904,25 @@ body {
             <option value="">— Zona destino —</option>
           </select>
         </div>
-        <div>
-          <label style="font-size:11px;color:var(--text2);font-weight:600;display:block;margin-bottom:4px">FECHA EFECTIVA</label>
-          <input type="month" id="reasigFecha" style="width:100%;font-size:13px;padding:6px 10px">
+      </div>
+
+      <!-- Multi-select de clientes -->
+      <div id="reasigClienteWrap">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <label style="font-size:11px;color:var(--text2);font-weight:600">CLIENTES A MOVER <span id="reasigCount" style="color:var(--teal)"></span></label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" id="reasigSearch" placeholder="🔍 Filtrar clientes..." oninput="filterClientesList(this.value)" style="font-size:12px;padding:4px 8px;width:200px">
+            <button class="btn btn-outline" onclick="selectAllClientes(true)"  style="font-size:11px;padding:3px 10px">Todos</button>
+            <button class="btn btn-outline" onclick="selectAllClientes(false)" style="font-size:11px;padding:3px 10px">Ninguno</button>
+          </div>
+        </div>
+        <div id="reasigClienteList" style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:var(--bg2)">
+          <div style="padding:12px;color:var(--text3);font-size:13px;text-align:center">Seleccioná una zona origen primero</div>
         </div>
       </div>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-gold" onclick="saveReasignacion()" style="font-size:12px;padding:5px 14px">✓ Guardar cambio</button>
+
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn btn-gold" onclick="saveReasignacion()" style="font-size:12px;padding:5px 14px">✓ Aplicar cambio</button>
         <button class="btn btn-outline" onclick="document.getElementById('reasigForm').style.display='none'" style="font-size:12px;padding:5px 14px">Cancelar</button>
       </div>
     </div>
@@ -3550,19 +3560,15 @@ function loadSavedState() {
 function addReasignacion() {
   const form = document.getElementById('reasigForm');
   form.style.display = 'block';
-  // Populate vendedor selects
   const vends = Object.keys(RAW_DATA.vendedores).sort();
-  ['reasigDe','reasigA'].forEach(id => {
-    const sel = document.getElementById(id);
-    sel.innerHTML = '<option value="">— Zona —</option>' +
-      vends.map(v => `<option value="${v}">${v.replace(/^\d+-/,'').replace(/\.\./g,'.').trim()}</option>`).join('');
-  });
-  // Populate client select
-  const clientes = Object.keys(RAW_DATA.clientes).sort();
-  document.getElementById('reasigCliente').innerHTML =
-    '<option value="">— Seleccionar cliente —</option>' +
-    clientes.map(c => `<option value="${c}">${c}</option>`).join('');
-  // Default date to current month
+  const optHtml = '<option value="">— Zona —</option>' +
+    vends.map(v => `<option value="${v}">${v.replace(/^\d+-/,'').replace(/\.\./g,'.').trim()}</option>`).join('');
+  document.getElementById('reasigDe').innerHTML = optHtml;
+  document.getElementById('reasigA').innerHTML  = optHtml;
+  document.getElementById('reasigClienteList').innerHTML =
+    '<div style="padding:12px;color:var(--text3);font-size:13px;text-align:center">Seleccioná una zona origen primero</div>';
+  document.getElementById('reasigCount').textContent = '';
+  document.getElementById('reasigSearch').value = '';
   const now = new Date();
   document.getElementById('reasigFecha').value =
     `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
@@ -3573,20 +3579,87 @@ function toggleReasigForm() {
   document.getElementById('reasigClienteWrap').style.display = tipo === 'cliente' ? '' : 'none';
 }
 
+function filterClientesByZona() {
+  const de = document.getElementById('reasigDe').value;
+  const tipo = document.getElementById('reasigTipo').value;
+  if (tipo !== 'cliente' || !de) return;
+
+  // Get clients from vendedorClientes mapping
+  const hasMapping = RAW_DATA.vendedorClientes && Object.keys(RAW_DATA.vendedorClientes).length > 0;
+  let clientes = [];
+
+  if (hasMapping) {
+    let vendClients = RAW_DATA.vendedorClientes[de];
+    if (!vendClients) {
+      const vKey = Object.keys(RAW_DATA.vendedorClientes).find(k => k.split('-')[0] === de.split('-')[0]);
+      vendClients = vKey ? RAW_DATA.vendedorClientes[vKey] : {};
+    }
+    clientes = Object.keys(vendClients || {}).sort();
+  } else {
+    // Fall back to all clients
+    clientes = Object.keys(RAW_DATA.clientes).sort();
+  }
+
+  window._reasigAllClientes = clientes;
+  renderClienteCheckboxes(clientes);
+}
+
+function renderClienteCheckboxes(clientes) {
+  const q = (document.getElementById('reasigSearch').value || '').toLowerCase();
+  const filtered = clientes.filter(c => !q || c.toLowerCase().includes(q));
+  const el = document.getElementById('reasigClienteList');
+
+  if (filtered.length === 0) {
+    el.innerHTML = '<div style="padding:12px;color:var(--text3);font-size:13px;text-align:center">Sin clientes para mostrar</div>';
+    updateReasigCount();
+    return;
+  }
+
+  el.innerHTML = filtered.map(c => `
+    <label style="display:flex;align-items:center;gap:10px;padding:7px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px">
+      <input type="checkbox" class="reasig-cb" value="${c.replace(/"/g,'&quot;')}" onchange="updateReasigCount()" style="width:14px;height:14px;accent-color:var(--teal)">
+      <span>${c}</span>
+    </label>`).join('');
+  updateReasigCount();
+}
+
+function filterClientesList(q) {
+  if (window._reasigAllClientes) renderClienteCheckboxes(window._reasigAllClientes);
+}
+
+function selectAllClientes(check) {
+  document.querySelectorAll('.reasig-cb').forEach(cb => cb.checked = check);
+  updateReasigCount();
+}
+
+function updateReasigCount() {
+  const checked = document.querySelectorAll('.reasig-cb:checked').length;
+  const total   = document.querySelectorAll('.reasig-cb').length;
+  const el = document.getElementById('reasigCount');
+  if (el) el.textContent = checked > 0 ? `(${checked} de ${total} seleccionados)` : '';
+}
+
 function saveReasignacion() {
-  const tipo   = document.getElementById('reasigTipo').value;
-  const de     = document.getElementById('reasigDe').value;
-  const a      = document.getElementById('reasigA').value;
-  const fecha  = document.getElementById('reasigFecha').value;
-  const cliente = tipo === 'cliente' ? document.getElementById('reasigCliente').value : null;
+  const tipo  = document.getElementById('reasigTipo').value;
+  const de    = document.getElementById('reasigDe').value;
+  const a     = document.getElementById('reasigA').value;
+  const fecha = document.getElementById('reasigFecha').value;
 
   if (!de || !a || !fecha) { alert('Completá todos los campos requeridos.'); return; }
   if (de === a) { alert('La zona origen y destino no pueden ser la misma.'); return; }
-  if (tipo === 'cliente' && !cliente) { alert('Seleccioná un cliente.'); return; }
 
-  const id = Date.now().toString();
-  state.reasignaciones.push({ id, tipo, de, a, cliente, fecha });
-  applyReasignaciones();
+  if (tipo === 'cliente') {
+    const checked = [...document.querySelectorAll('.reasig-cb:checked')].map(cb => cb.value);
+    if (checked.length === 0) { alert('Seleccioná al menos un cliente.'); return; }
+
+    // Group all selected clients into one reasignacion entry
+    const id = Date.now().toString();
+    state.reasignaciones.push({ id, tipo: 'cliente', de, a, clientes: checked, fecha });
+  } else {
+    state.reasignaciones.push({ id: Date.now().toString(), tipo: 'vendedor', de, a, fecha });
+  }
+
+  rebuildVendedorClientes();
   renderReasigList();
   document.getElementById('reasigForm').style.display = 'none';
   render();
@@ -3594,7 +3667,6 @@ function saveReasignacion() {
 
 function removeReasignacion(id) {
   state.reasignaciones = state.reasignaciones.filter(r => r.id !== id);
-  // Rebuild vendedorClientes from scratch using original data + remaining reasigs
   rebuildVendedorClientes();
   renderReasigList();
   render();
@@ -3604,46 +3676,45 @@ function applyReasignaciones() {
   if (!RAW_DATA.vendedorClientes || Object.keys(RAW_DATA.vendedorClientes).length === 0) return;
 
   state.reasignaciones.forEach(r => {
-    if (r.tipo === 'cliente' && r.cliente) {
-      // Move one client from vendor DE to vendor A
-      const src = RAW_DATA.vendedorClientes[r.de];
-      if (src && src[r.cliente]) {
+    // Support both old single 'cliente' field and new 'clientes' array
+    const lista = r.clientes || (r.cliente ? [r.cliente] : []);
+
+    if (r.tipo === 'cliente' && lista.length > 0) {
+      lista.forEach(cliente => {
+        const src = RAW_DATA.vendedorClientes[r.de];
+        if (!src || !src[cliente]) return;
         if (!RAW_DATA.vendedorClientes[r.a]) RAW_DATA.vendedorClientes[r.a] = {};
-        // Merge historial (add to existing if client already had some sales with new vendor)
-        const existing = RAW_DATA.vendedorClientes[r.a][r.cliente];
-        const moving   = src[r.cliente];
+        const existing = RAW_DATA.vendedorClientes[r.a][cliente];
+        const moving   = src[cliente];
         if (existing) {
-          existing.historico = existing.historico.map((v, i) => v + (moving.historico[i] || 0));
+          existing.historico   = existing.historico.map((v, i) => v + (moving.historico[i] || 0));
           existing.histQ2_2025 = (existing.histQ2_2025 || 0) + (moving.histQ2_2025 || 0);
           existing.histQ2_2024 = (existing.histQ2_2024 || 0) + (moving.histQ2_2024 || 0);
         } else {
-          RAW_DATA.vendedorClientes[r.a][r.cliente] = JSON.parse(JSON.stringify(moving));
+          RAW_DATA.vendedorClientes[r.a][cliente] = JSON.parse(JSON.stringify(moving));
         }
-        delete RAW_DATA.vendedorClientes[r.de][r.cliente];
-      }
+        delete RAW_DATA.vendedorClientes[r.de][cliente];
+      });
     } else if (r.tipo === 'vendedor') {
-      // Transfer entire portfolio from vendor DE to vendor A
       const src = RAW_DATA.vendedorClientes[r.de];
-      if (src) {
-        if (!RAW_DATA.vendedorClientes[r.a]) RAW_DATA.vendedorClientes[r.a] = {};
-        Object.entries(src).forEach(([cl, d]) => {
-          const existing = RAW_DATA.vendedorClientes[r.a][cl];
-          if (existing) {
-            existing.historico = existing.historico.map((v, i) => v + (d.historico[i] || 0));
-            existing.histQ2_2025 = (existing.histQ2_2025 || 0) + (d.histQ2_2025 || 0);
-            existing.histQ2_2024 = (existing.histQ2_2024 || 0) + (d.histQ2_2024 || 0);
-          } else {
-            RAW_DATA.vendedorClientes[r.a][cl] = JSON.parse(JSON.stringify(d));
-          }
-        });
-        RAW_DATA.vendedorClientes[r.de] = {};
-      }
+      if (!src) return;
+      if (!RAW_DATA.vendedorClientes[r.a]) RAW_DATA.vendedorClientes[r.a] = {};
+      Object.entries(src).forEach(([cl, d]) => {
+        const existing = RAW_DATA.vendedorClientes[r.a][cl];
+        if (existing) {
+          existing.historico   = existing.historico.map((v, i) => v + (d.historico[i] || 0));
+          existing.histQ2_2025 = (existing.histQ2_2025 || 0) + (d.histQ2_2025 || 0);
+          existing.histQ2_2024 = (existing.histQ2_2024 || 0) + (d.histQ2_2024 || 0);
+        } else {
+          RAW_DATA.vendedorClientes[r.a][cl] = JSON.parse(JSON.stringify(d));
+        }
+      });
+      RAW_DATA.vendedorClientes[r.de] = {};
     }
   });
 }
 
 function rebuildVendedorClientes() {
-  // Restore from saved original if available
   if (window._originalVendedorClientes) {
     RAW_DATA.vendedorClientes = JSON.parse(JSON.stringify(window._originalVendedorClientes));
   }
@@ -3658,15 +3729,19 @@ function renderReasigList() {
     return;
   }
   el.innerHTML = state.reasignaciones.map(r => {
-    const deLabel = r.de.replace(/^\d+-/,'').replace(/\.\./g,'.').trim();
-    const aLabel  = r.a.replace(/^\d+-/,'').replace(/\.\./g,'.').trim();
-    const icon    = r.tipo === 'cliente' ? '👤' : '🔄';
-    const desc    = r.tipo === 'cliente'
-      ? `<strong>${r.cliente}</strong> — de <em>${deLabel}</em> a <em>${aLabel}</em>`
+    const deLabel  = r.de.replace(/^\d+-/,'').replace(/\.\./g,'.').trim();
+    const aLabel   = r.a.replace(/^\d+-/,'').replace(/\.\./g,'.').trim();
+    const lista    = r.clientes || (r.cliente ? [r.cliente] : []);
+    const icon     = r.tipo === 'cliente' ? '👤' : '🔄';
+    const desc     = r.tipo === 'cliente'
+      ? `<strong>${lista.length} cliente${lista.length!==1?'s':''}</strong> — de <em>${deLabel}</em> → <em>${aLabel}</em>
+         <div style="font-size:11px;color:var(--text3);margin-top:2px">${lista.slice(0,3).join(', ')}${lista.length>3?' y '+(lista.length-3)+' más..':''}</div>`
       : `Cartera completa de <em>${deLabel}</em> → <em>${aLabel}</em>`;
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border)">
-      <div style="font-size:13px">${icon} ${desc} <span style="color:var(--text3);margin-left:8px;font-size:11px">desde ${r.fecha}</span></div>
-      <button class="btn btn-outline" onclick="removeReasignacion('${r.id}')" style="font-size:11px;padding:3px 10px;color:var(--red);border-color:var(--red)">✕ Quitar</button>
+    return `<div style="padding:10px 14px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+        <div style="font-size:13px">${icon} ${desc} <span style="color:var(--text3);font-size:11px;margin-left:6px">desde ${r.fecha}</span></div>
+        <button class="btn btn-outline" onclick="removeReasignacion('${r.id}')" style="font-size:11px;padding:3px 10px;color:var(--red);border-color:var(--red);flex-shrink:0">✕</button>
+      </div>
     </div>`;
   }).join('');
 }
