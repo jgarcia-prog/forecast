@@ -3748,11 +3748,15 @@ function applyReasignaciones() {
             RAW_DATA.vendedores[r.de].historico = RAW_DATA.vendedores[r.de].historico.map(
               (v, i) => Math.max(0, v - (moving.historico[i] || 0))
             );
+            // Recompute proyeccion for origin vendor
+            RAW_DATA.vendedores[r.de].proyeccion = projectQ2JS(RAW_DATA.vendedores[r.de].historico);
           }
           if (!RAW_DATA.vendedores[r.a]) createNuevoVendedor(r.a);
           RAW_DATA.vendedores[r.a].historico = RAW_DATA.vendedores[r.a].historico.map(
             (v, i) => v + (moving.historico[i] || 0)
           );
+          // Recompute proyeccion for destination vendor
+          RAW_DATA.vendedores[r.a].proyeccion = projectQ2JS(RAW_DATA.vendedores[r.a].historico);
         }
       });
 
@@ -3768,6 +3772,9 @@ function applyReasignaciones() {
         // Zero out origin vendor
         RAW_DATA.vendedores[r.de].historico = RAW_DATA.vendedores[r.de].historico.map(() => 0);
       }
+      // Recompute proyeccion so getProyeccion fast-path returns correct values
+      RAW_DATA.vendedores[r.a].proyeccion = projectQ2JS(RAW_DATA.vendedores[r.a].historico);
+      RAW_DATA.vendedores[r.de].proyeccion = [0, 0, 0];
 
       // Also transfer vendedorClientes if available
       if (hasClienteMap) {
@@ -3803,7 +3810,8 @@ function rebuildVendedorClientes() {
   // Also restore original vendedores historico (so subtractions start fresh)
   Object.keys(ORIGINAL_RAW_DATA.vendedores).forEach(v => {
     if (RAW_DATA.vendedores[v]) {
-      RAW_DATA.vendedores[v].historico = [...ORIGINAL_RAW_DATA.vendedores[v].historico];
+      RAW_DATA.vendedores[v].historico  = [...ORIGINAL_RAW_DATA.vendedores[v].historico];
+      RAW_DATA.vendedores[v].proyeccion = [...ORIGINAL_RAW_DATA.vendedores[v].proyeccion];
     }
   });
   // Remove any vendors that were created as "new" (not in original)
