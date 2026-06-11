@@ -1,12 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <link rel="manifest" href="/manifest.json">
-  <meta name="theme-color" content="#007a65">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Forecast">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cálculo de Metas Q2 2026 — COFERSA</title>
@@ -689,15 +683,6 @@ body {
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-header">
-      <div>
-        <div class="card-title">Tendencia Histórica + Meta Q2 2026</div>
-        <div class="card-sub" id="trendSubtitle">27 meses históricos · Meta: Regresión lineal + estacionalidad</div>
-      </div>
-    </div>
-    <div class="chart-wrap"><canvas id="trendChart" height="200"></canvas></div>
-  </div>
 </div>
 
 <!-- TAB 1: VENDEDORES -->
@@ -1410,7 +1395,6 @@ function render() {
 
   renderKPIs(q2Hist, totalProj, budget, monthlyProj);
   renderAlerts(totalProj, budget);
-  renderTrendChart(filtVendProj);
   renderPortCards(portProj);
   renderVendTable(vendProj);
   renderMarcaTable(marcaProj);
@@ -3477,15 +3461,6 @@ function renderMarkdown(text) {
     .replace(/\n{2,}/g, '</p><p>')
     .replace(/^(?!<[hup])/gm, '')
     .replace(/¢(\d)/g, '¢$1');
-}
-</script>
-<script>
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js")
-      .then(r => console.log("SW registered:", r.scope))
-      .catch(e => console.log("SW error:", e));
-  });
 }
 </script>
 </body>
