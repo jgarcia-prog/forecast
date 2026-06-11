@@ -3716,16 +3716,23 @@ function applyReasignaciones() {
   if (!RAW_DATA.vendedorClientes || Object.keys(RAW_DATA.vendedorClientes).length === 0) return;
 
   state.reasignaciones.forEach(r => {
-    // Support both old single 'cliente' field and new 'clientes' array
     const lista = r.clientes || (r.cliente ? [r.cliente] : []);
 
     if (r.tipo === 'cliente' && lista.length > 0) {
       lista.forEach(cliente => {
-        const src = RAW_DATA.vendedorClientes[r.de];
+        // Find the source mapping (try exact key, then prefix match)
+        let srcKey = r.de;
+        if (!RAW_DATA.vendedorClientes[srcKey]) {
+          srcKey = Object.keys(RAW_DATA.vendedorClientes).find(k => k.split('-')[0] === r.de.split('-')[0]) || r.de;
+        }
+        const src = RAW_DATA.vendedorClientes[srcKey];
         if (!src || !src[cliente]) return;
+
+        const moving = src[cliente];
+
+        // 1. Update vendedorClientes mapping
         if (!RAW_DATA.vendedorClientes[r.a]) RAW_DATA.vendedorClientes[r.a] = {};
         const existing = RAW_DATA.vendedorClientes[r.a][cliente];
-        const moving   = src[cliente];
         if (existing) {
           existing.historico   = existing.historico.map((v, i) => v + (moving.historico[i] || 0));
           existing.histQ2_2025 = (existing.histQ2_2025 || 0) + (moving.histQ2_2025 || 0);
@@ -3733,11 +3740,33 @@ function applyReasignaciones() {
         } else {
           RAW_DATA.vendedorClientes[r.a][cliente] = JSON.parse(JSON.stringify(moving));
         }
-        delete RAW_DATA.vendedorClientes[r.de][cliente];
+        delete RAW_DATA.vendedorClientes[srcKey][cliente];
+
+        // 2. Update RAW_DATA.vendedores historico (source of truth for projections)
+        if (moving.historico && moving.historico.length > 0) {
+          // Subtract from vendor DE
+          if (RAW_DATA.vendedores[r.de]) {
+            RAW_DATA.vendedores[r.de].historico = RAW_DATA.vendedores[r.de].historico.map(
+              (v, i) => Math.max(0, v - (moving.historico[i] || 0))
+            );
+          }
+          // Add to vendor A (create if new)
+          if (!RAW_DATA.vendedores[r.a]) createNuevoVendedor(r.a);
+          RAW_DATA.vendedores[r.a].historico = RAW_DATA.vendedores[r.a].historico.map(
+            (v, i) => v + (moving.historico[i] || 0)
+          );
+        }
       });
+
     } else if (r.tipo === 'vendedor') {
-      const src = RAW_DATA.vendedorClientes[r.de];
+      // Transfer entire portfolio
+      let srcKey = r.de;
+      if (!RAW_DATA.vendedorClientes[srcKey]) {
+        srcKey = Object.keys(RAW_DATA.vendedorClientes).find(k => k.split('-')[0] === r.de.split('-')[0]) || r.de;
+      }
+      const src = RAW_DATA.vendedorClientes[srcKey];
       if (!src) return;
+
       if (!RAW_DATA.vendedorClientes[r.a]) RAW_DATA.vendedorClientes[r.a] = {};
       Object.entries(src).forEach(([cl, d]) => {
         const existing = RAW_DATA.vendedorClientes[r.a][cl];
@@ -3749,15 +3778,38 @@ function applyReasignaciones() {
           RAW_DATA.vendedorClientes[r.a][cl] = JSON.parse(JSON.stringify(d));
         }
       });
-      RAW_DATA.vendedorClientes[r.de] = {};
+      RAW_DATA.vendedorClientes[srcKey] = {};
+
+      // 2. Transfer full vendor historico
+      if (!RAW_DATA.vendedores[r.a]) createNuevoVendedor(r.a);
+      if (RAW_DATA.vendedores[r.de]) {
+        RAW_DATA.vendedores[r.a].historico = RAW_DATA.vendedores[r.a].historico.map(
+          (v, i) => v + (RAW_DATA.vendedores[r.de].historico[i] || 0)
+        );
+        RAW_DATA.vendedores[r.de].historico = RAW_DATA.vendedores[r.de].historico.map(() => 0);
+      }
     }
   });
 }
 
 function rebuildVendedorClientes() {
+  // Restore original vendedorClientes
   if (window._originalVendedorClientes) {
     RAW_DATA.vendedorClientes = JSON.parse(JSON.stringify(window._originalVendedorClientes));
   }
+  // Also restore original vendedores historico (so subtractions start fresh)
+  Object.keys(ORIGINAL_RAW_DATA.vendedores).forEach(v => {
+    if (RAW_DATA.vendedores[v]) {
+      RAW_DATA.vendedores[v].historico = [...ORIGINAL_RAW_DATA.vendedores[v].historico];
+    }
+  });
+  // Remove any vendors that were created as "new" (not in original)
+  Object.keys(RAW_DATA.vendedores).forEach(v => {
+    if (!ORIGINAL_RAW_DATA.vendedores[v]) {
+      delete RAW_DATA.vendedores[v];
+      delete state.adjustments.vendedores[v];
+    }
+  });
   applyReasignaciones();
 }
 
