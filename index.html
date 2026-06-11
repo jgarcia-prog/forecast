@@ -2984,27 +2984,38 @@ function projectQ2JS(historico) {
   const data = state.smoothOutliers ? winsorize(historico, state.smoothSigma) : historico;
 
   const n = data.length;
-  const last24 = data.slice(Math.max(0, n-24));
+  const window = Math.min(24, n);           // use up to 24 months
+  const last24 = data.slice(n - window);
+  const nMeses = last24.length;             // actual months used (≤24)
+
   const x = last24.map((_, i) => i);
-  const sumX = x.reduce((a,b)=>a+b,0);
-  const sumY = last24.reduce((a,b)=>a+b,0);
+  const sumX  = x.reduce((a,b)=>a+b,0);
+  const sumY  = last24.reduce((a,b)=>a+b,0);
   const sumXY = x.reduce((s,xi,i)=>s+xi*last24[i],0);
   const sumX2 = x.reduce((s,xi)=>s+xi*xi,0);
-  const n12 = last24.length;
-  const denom = n12*sumX2 - sumX*sumX;
-  const m = denom !== 0 ? (n12*sumXY - sumX*sumY)/denom : 0;
-  const b = (sumY - m*sumX) / n12;
-  const trend = [n12, n12+1, n12+2].map(t => Math.max(0, m*t+b));
+  const denom = nMeses*sumX2 - sumX*sumX;
+  const m = denom !== 0 ? (nMeses*sumXY - sumX*sumY)/denom : 0;
+  const b = (sumY - m*sumX) / nMeses;
 
-  // Seasonality uses smoothed data too
-  const q2Indices = { 0: [3,4,5], 1: [15,16,17] };
-  const getQ2 = (yr) => (q2Indices[yr] || []).map(i => data[i] || 0);
+  // Project the 3 months immediately after the last loaded month
+  // e.g. 24 months loaded → project months 25, 26, 27
+  const trend = [nMeses, nMeses+1, nMeses+2].map(t => Math.max(0, m*t+b));
+
+  // Seasonality: Q2 months relative to the START of the full data array
+  // Indices: Apr/May/Jun 2024 = [3,4,5], Apr/May/Jun 2025 = [15,16,17]
+  const offset = n - window;               // how many months were skipped
+  const q2AbsIdx = { 0: [3,4,5], 1: [15,16,17] };
+  const getQ2 = (yr) => (q2AbsIdx[yr] || []).map(i => {
+    const relIdx = i - offset;             // relative index within last24
+    return (relIdx >= 0 && relIdx < nMeses) ? last24[relIdx] : (data[i] || 0);
+  });
   const q2_2024 = getQ2(0);
   const q2_2025 = getQ2(1);
-  return trend.map((t, i) => {
+
+  return trend.map((_, i) => {
     const seasonal = ((q2_2024[i]||0) + (q2_2025[i]||0)) / 2;
     const tw = state.blendWeight;
-    return Math.max(0, tw * t + (1 - tw) * seasonal);
+    return Math.max(0, tw * trend[i] + (1 - tw) * seasonal);
   });
 }
 
