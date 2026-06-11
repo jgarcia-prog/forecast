@@ -877,8 +877,8 @@ body {
         <p style="margin-top:8px">El sistema utiliza un modelo híbrido que combina:</p>
         <br>
         <p><strong>1. Componente de Tendencia (<span id="trendPctLabel">60</span>%)</strong><br>
-        Regresión lineal de mínimos cuadrados sobre los últimos 12 meses, proyectada 3 meses hacia adelante (Abr, May, Jun 2026).</p>
-        <div class="formula-box">Tendencia(t) = β₀ + β₁·t &nbsp;[OLS sobre últimos 12 meses]</div>
+        Regresión lineal de mínimos cuadrados sobre los últimos 24 meses, proyectada 3 meses hacia adelante (Abr, May, Jun 2026).</p>
+        <div class="formula-box">Tendencia(t) = β₀ + β₁·t &nbsp;[OLS sobre últimos 24 meses]</div>
         <p><strong>2. Componente Estacional (<span id="seasPctLabel">40</span>%)</strong><br>
         Promedio de los meses equivalentes de Q2 2024 y Q2 2025, escalado al nivel promedio reciente.</p>
         <div class="formula-box">Estacional(t) = avg(Q2_2024[t], Q2_2025[t]) / avg_6m_reciente × avg_6m_reciente</div>
@@ -2984,17 +2984,17 @@ function projectQ2JS(historico) {
   const data = state.smoothOutliers ? winsorize(historico, state.smoothSigma) : historico;
 
   const n = data.length;
-  const last12 = data.slice(Math.max(0, n-12));
-  const x = last12.map((_, i) => i);
+  const last24 = data.slice(Math.max(0, n-24));
+  const x = last24.map((_, i) => i);
   const sumX = x.reduce((a,b)=>a+b,0);
-  const sumY = last12.reduce((a,b)=>a+b,0);
-  const sumXY = x.reduce((s,xi,i)=>s+xi*last12[i],0);
+  const sumY = last24.reduce((a,b)=>a+b,0);
+  const sumXY = x.reduce((s,xi,i)=>s+xi*last24[i],0);
   const sumX2 = x.reduce((s,xi)=>s+xi*xi,0);
-  const n12 = last12.length;
+  const n12 = last24.length;
   const denom = n12*sumX2 - sumX*sumX;
   const m = denom !== 0 ? (n12*sumXY - sumX*sumY)/denom : 0;
   const b = (sumY - m*sumX) / n12;
-  const trend = [12,13,14].map(t => Math.max(0, m*t+b));
+  const trend = [n12, n12+1, n12+2].map(t => Math.max(0, m*t+b));
 
   // Seasonality uses smoothed data too
   const q2Indices = { 0: [3,4,5], 1: [15,16,17] };
