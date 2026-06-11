@@ -900,9 +900,12 @@ body {
         </div>
         <div>
           <label style="font-size:11px;color:var(--text2);font-weight:600;display:block;margin-bottom:4px">ZONA NUEVA (A)</label>
-          <select id="reasigA" style="width:100%;font-size:13px;padding:6px 10px">
-            <option value="">— Zona destino —</option>
-          </select>
+          <input type="text" id="reasigA" list="reasigAList" placeholder="Nombre o seleccioná zona existente..."
+            style="width:100%;font-size:13px;padding:6px 10px" oninput="checkNuevoVendedor()">
+          <datalist id="reasigAList"></datalist>
+          <div id="nuevoVendedorBadge" style="display:none;margin-top:4px;font-size:11px;color:var(--teal)">
+            ✨ Se creará como nueva zona de venta
+          </div>
         </div>
       </div>
 
@@ -3564,7 +3567,13 @@ function addReasignacion() {
   const optHtml = '<option value="">— Zona —</option>' +
     vends.map(v => `<option value="${v}">${v.replace(/^\d+-/,'').replace(/\.\./g,'.').trim()}</option>`).join('');
   document.getElementById('reasigDe').innerHTML = optHtml;
-  document.getElementById('reasigA').innerHTML  = optHtml;
+
+  // Datalist for zona destino (existing vendors + free-text allowed)
+  document.getElementById('reasigAList').innerHTML =
+    vends.map(v => `<option value="${v}">${v.replace(/^\d+-/,'').replace(/\.\./g,'.').trim()}</option>`).join('');
+  document.getElementById('reasigA').value = '';
+  document.getElementById('nuevoVendedorBadge').style.display = 'none';
+
   document.getElementById('reasigClienteList').innerHTML =
     '<div style="padding:12px;color:var(--text3);font-size:13px;text-align:center">Seleccioná una zona origen primero</div>';
   document.getElementById('reasigCount').textContent = '';
@@ -3572,6 +3581,32 @@ function addReasignacion() {
   const now = new Date();
   document.getElementById('reasigFecha').value =
     `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+}
+
+function checkNuevoVendedor() {
+  const val = document.getElementById('reasigA').value.trim();
+  const isExisting = Object.keys(RAW_DATA.vendedores).includes(val);
+  document.getElementById('nuevoVendedorBadge').style.display =
+    (val && !isExisting) ? 'block' : 'none';
+}
+
+function createNuevoVendedor(nombre) {
+  // Add the new vendor to RAW_DATA with empty historical data
+  const nMeses = Object.values(RAW_DATA.vendedores)[0]?.historico?.length || 24;
+  RAW_DATA.vendedores[nombre] = {
+    historico:  new Array(nMeses).fill(0),
+    proyeccion: [0, 0, 0]
+  };
+  RAW_DATA.vendedorClientes[nombre] = {};
+  state.adjustments.vendedores[nombre] = 0;
+  if (!RAW_DATA.portafolios) return;
+  // Add to filters
+  const filtVend = document.getElementById('filterVendedor');
+  if (filtVend && !Array.from(filtVend.options).find(o => o.value === nombre)) {
+    const opt = document.createElement('option');
+    opt.value = nombre; opt.textContent = nombre;
+    filtVend.appendChild(opt);
+  }
 }
 
 function toggleReasigForm() {
@@ -3642,11 +3677,16 @@ function updateReasigCount() {
 function saveReasignacion() {
   const tipo  = document.getElementById('reasigTipo').value;
   const de    = document.getElementById('reasigDe').value;
-  const a     = document.getElementById('reasigA').value;
+  const a     = document.getElementById('reasigA').value.trim();
   const fecha = document.getElementById('reasigFecha').value;
 
   if (!de || !a || !fecha) { alert('Completá todos los campos requeridos.'); return; }
   if (de === a) { alert('La zona origen y destino no pueden ser la misma.'); return; }
+
+  // Create new vendor if it doesn't exist
+  if (!RAW_DATA.vendedores[a]) {
+    createNuevoVendedor(a);
+  }
 
   if (tipo === 'cliente') {
     const checked = [...document.querySelectorAll('.reasig-cb:checked')].map(cb => cb.value);
@@ -3730,13 +3770,17 @@ function renderReasigList() {
   }
   el.innerHTML = state.reasignaciones.map(r => {
     const deLabel  = r.de.replace(/^\d+-/,'').replace(/\.\./g,'.').trim();
+    const isNew    = !ORIGINAL_RAW_DATA.vendedores[r.a];
     const aLabel   = r.a.replace(/^\d+-/,'').replace(/\.\./g,'.').trim();
+    const aDisplay = isNew
+      ? `<em>${aLabel}</em> <span style="background:#E1F5EE;color:#085041;font-size:10px;padding:1px 6px;border-radius:4px;font-weight:600">NUEVA</span>`
+      : `<em>${aLabel}</em>`;
     const lista    = r.clientes || (r.cliente ? [r.cliente] : []);
     const icon     = r.tipo === 'cliente' ? '👤' : '🔄';
     const desc     = r.tipo === 'cliente'
-      ? `<strong>${lista.length} cliente${lista.length!==1?'s':''}</strong> — de <em>${deLabel}</em> → <em>${aLabel}</em>
+      ? `<strong>${lista.length} cliente${lista.length!==1?'s':''}</strong> — de <em>${deLabel}</em> → ${aDisplay}
          <div style="font-size:11px;color:var(--text3);margin-top:2px">${lista.slice(0,3).join(', ')}${lista.length>3?' y '+(lista.length-3)+' más..':''}</div>`
-      : `Cartera completa de <em>${deLabel}</em> → <em>${aLabel}</em>`;
+      : `Cartera completa de <em>${deLabel}</em> → ${aDisplay}`;
     return `<div style="padding:10px 14px;border-bottom:1px solid var(--border)">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
         <div style="font-size:13px">${icon} ${desc} <span style="color:var(--text3);font-size:11px;margin-left:6px">desde ${r.fecha}</span></div>
