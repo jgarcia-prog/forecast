@@ -1196,6 +1196,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Restore last saved state (if any)
   const restored = loadSavedState();
+  // Re-apply reasignaciones if any were restored (they modify RAW_DATA)
+  if (state.reasignaciones.length > 0) rebuildVendedorClientes();
 
   renderBudgetBreakdown();
   renderAdjPanels();
@@ -1248,9 +1250,10 @@ function getHistQ2(historico, year) {
 }
 
 // Returns projection for an entity — uses cached value for defaults,
-// recalculates dynamically when blend weight or smoothing is changed
+// recalculates dynamically when blend weight or smoothing is changed,
+// or when the vendor was modified by a reasignacion (_reasigned flag)
 function getProyeccion(d) {
-  if (state.blendWeight === 0.60 && !state.smoothOutliers) {
+  if (!d._reasigned && state.blendWeight === 0.60 && !state.smoothOutliers) {
     return d.proyeccion; // fast path: use pre-computed embedded values
   }
   return projectQ2JS(d.historico);
@@ -3748,6 +3751,7 @@ function applyReasignaciones() {
             RAW_DATA.vendedores[r.de].historico = RAW_DATA.vendedores[r.de].historico.map(
               (v, i) => Math.max(0, v - (moving.historico[i] || 0))
             );
+            RAW_DATA.vendedores[r.de]._reasigned = true;
             // Recompute proyeccion for origin vendor
             RAW_DATA.vendedores[r.de].proyeccion = projectQ2JS(RAW_DATA.vendedores[r.de].historico);
           }
@@ -3755,6 +3759,7 @@ function applyReasignaciones() {
           RAW_DATA.vendedores[r.a].historico = RAW_DATA.vendedores[r.a].historico.map(
             (v, i) => v + (moving.historico[i] || 0)
           );
+          RAW_DATA.vendedores[r.a]._reasigned = true;
           // Recompute proyeccion for destination vendor
           RAW_DATA.vendedores[r.a].proyeccion = projectQ2JS(RAW_DATA.vendedores[r.a].historico);
         }
@@ -3772,6 +3777,9 @@ function applyReasignaciones() {
         // Zero out origin vendor
         RAW_DATA.vendedores[r.de].historico = RAW_DATA.vendedores[r.de].historico.map(() => 0);
       }
+      // Mark both as reasigned so getProyeccion bypasses the cache
+      RAW_DATA.vendedores[r.a]._reasigned = true;
+      if (RAW_DATA.vendedores[r.de]) RAW_DATA.vendedores[r.de]._reasigned = true;
       // Recompute proyeccion so getProyeccion fast-path returns correct values
       RAW_DATA.vendedores[r.a].proyeccion = projectQ2JS(RAW_DATA.vendedores[r.a].historico);
       RAW_DATA.vendedores[r.de].proyeccion = [0, 0, 0];
@@ -3812,6 +3820,7 @@ function rebuildVendedorClientes() {
     if (RAW_DATA.vendedores[v]) {
       RAW_DATA.vendedores[v].historico  = [...ORIGINAL_RAW_DATA.vendedores[v].historico];
       RAW_DATA.vendedores[v].proyeccion = [...ORIGINAL_RAW_DATA.vendedores[v].proyeccion];
+      delete RAW_DATA.vendedores[v]._reasigned; // clear flag so fast-path works again
     }
   });
   // Remove any vendors that were created as "new" (not in original)
