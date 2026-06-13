@@ -3050,8 +3050,21 @@ function buildSupervisorEmailHTML(supervisor, vendedoresData) {
   // Fuzzy key match: strip numeric prefix and compare lowercase
   const findProj = (vendedor) => {
     if (vendProj[vendedor]) return vendProj[vendedor];
+    // Normalize: strip numeric prefix, lowercase, trim
     const norm = v => v.replace(/^\d+-/, '').trim().toLowerCase();
-    const key = Object.keys(vendProj).find(k => norm(k) === norm(vendedor));
+    const normVend = norm(vendedor);
+    // 1. Exact match after normalization
+    let key = Object.keys(vendProj).find(k => norm(k) === normVend);
+    if (key) return vendProj[key];
+    // 2. One name starts with the other (handles "ALLAN PACHECO" vs "ALLAN PACHECO VILLALOBOS")
+    key = Object.keys(vendProj).find(k => {
+      const nk = norm(k);
+      return normVend.startsWith(nk) || nk.startsWith(normVend);
+    });
+    if (key) return vendProj[key];
+    // 3. First two words match (e.g. "ANGEL JIMENEZ RODRIGUEZ" vs "ANGEL JIMENEZ")
+    const words = normVend.split(' ').slice(0, 2).join(' ');
+    key = Object.keys(vendProj).find(k => norm(k).split(' ').slice(0, 2).join(' ') === words);
     return key ? vendProj[key] : null;
   };
 
