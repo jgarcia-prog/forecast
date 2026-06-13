@@ -1944,11 +1944,12 @@ function renderVendMarcaTable(vendProj) {
     </tr>`;
 
     // Filter brands by vendedor's portafolio (if mapping exists)
-    const vendedorPort = vendPort[x.v] || null;
-    const marcasDelVendedor = Object.entries(marcaProj).filter(([marca, md]) => {
+    const vendedorPort = vendPort[x.v] || vendPort[x.v.trim()] || null;
+    const normalize = s => (s || '').trim().toLowerCase();
+    const marcasDelVendedor = Object.entries(marcaProj).filter(([marca]) => {
       if (!vendedorPort) return true; // no mapping → show all brands
-      const marcaPortafolio = RAW_DATA.marcas[marca]?.portafolio || null;
-      return marcaPortafolio === vendedorPort;
+      const marcaPort = RAW_DATA.marcas[marca]?.portafolio || '';
+      return normalize(marcaPort) === normalize(vendedorPort);
     });
 
     // Sum of all brands in this vendor's portafolio for proportional share
@@ -2987,19 +2988,19 @@ async function loadFromSupabase() {
   document.getElementById('dataStatus').className = 'status-chip chip-warn';
 
   try {
-    // Fetch all 3 RPCs + Reglas in parallel
-    const [vendRows, marcaRows, clienteRows, reglas] = await Promise.all([
+    // Fetch all 4 RPCs in parallel
+    const [vendRows, marcaRows, clienteRows, portReglas] = await Promise.all([
       supaRPC('get_vendedores_hist'),
       supaRPC('get_marcas_hist'),
       supaRPC('get_clientes_hist'),
-      supaTable('Reglas de Portafolio', 'vendedor_secundario,portafolio')
+      supaRPC('get_vendor_portafolio')
     ]);
 
-    // Build vendedor → portafolio mapping from Reglas de Portafolio
+    // Build vendedor → portafolio mapping from RPC result
     const vendedorPortafolio = {};
-    reglas.forEach(r => {
-      if (r.vendedor_secundario && r.portafolio)
-        vendedorPortafolio[r.vendedor_secundario.trim()] = r.portafolio.trim();
+    portReglas.forEach(r => {
+      if (r.vendedor && r.portafolio)
+        vendedorPortafolio[r.vendedor.trim()] = r.portafolio.trim();
     });
     RAW_DATA.vendedorPortafolio = vendedorPortafolio;
 
@@ -3096,7 +3097,7 @@ async function loadFromSupabase() {
     renderReasigList();
     render();
 
-    document.getElementById('dataStatus').textContent = `● Supabase · ${vendRows.length} zonas · ${Object.keys(newClientes).length} clientes`;
+    document.getElementById('dataStatus').textContent = `● Supabase · ${vendRows.length} zonas · ${Object.keys(newClientes).length} clientes · ${Object.keys(vendedorPortafolio).length} reglas portafolio`;
     document.getElementById('dataStatus').className = 'status-chip chip-ok';
     txt.textContent = '✓ Supabase';
     btn.style.background = 'rgba(62,207,142,0.1)';
