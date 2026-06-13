@@ -2949,7 +2949,7 @@ function switchTab(idx) {
 }
 
 // ==================== EMAIL METAS ====================
-const EDGE_URL = `${SUPA_URL}/functions/v1/send-meta-email`;
+const getEdgeURL = () => `${SUPA_URL}/functions/v1/send-meta-email`;
 let _emailVendorData = [];
 let _previewList = [];
 let _previewIdx = 0;
@@ -3088,7 +3088,7 @@ async function sendEmails(){
     document.getElementById('emailStatus').innerHTML = testMode
       ? `<span style="color:#b45309">🧪 Modo prueba — todos los correos van a <strong>${testEmail}</strong>...</span>`
       : `<span style="color:var(--text3)">⏳ Enviando a ${payload.length} vendedores...</span>`;
-    const res=await fetch(EDGE_URL,{method:'POST',headers:{'Content-Type':'application/json','apikey':SUPA_KEY,'Authorization':`Bearer ${SUPA_KEY}`},body:JSON.stringify({vendedores:payload})});
+    const res=await fetch(getEdgeURL(),{method:'POST',headers:{'Content-Type':'application/json','apikey':SUPA_KEY,'Authorization':`Bearer ${SUPA_KEY}`},body:JSON.stringify({vendedores:payload})});
     const result=await res.json();
     if(result.ok){
       const sent=result.results.filter(r=>r.status==='sent').length;
