@@ -661,9 +661,9 @@ body {
 
   <div class="kpi-row" id="kpiRow">
     <div class="kpi-card">
-      <div class="kpi-label">Venta Q2 2025</div>
+      <div class="kpi-label">Venta Q3 2025</div>
       <div class="kpi-value" id="kpi_hist">—</div>
-      <div class="kpi-sub">Abr + May + Jun 2025</div>
+      <div class="kpi-sub">Jul + Ago + Sep 2025</div>
     </div>
     <div class="kpi-card gold">
       <div class="kpi-label">Presupuesto Q3 2026</div>
@@ -678,7 +678,7 @@ body {
     <div class="kpi-card blue">
       <div class="kpi-label">Meta Q3 2026</div>
       <div class="kpi-value" id="kpi_proj">—</div>
-      <div class="kpi-sub">Abr + May + Sep 2026</div>
+      <div class="kpi-sub">Jul + Ago + Sep 2026</div>
       <div id="kpi_proj_badge" class="kpi-badge" style="margin-top:8px"></div>
       <div id="projMonthlyBreakdown" style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px"></div>
     </div>
@@ -752,7 +752,7 @@ body {
             <th class="num">Meta Ago 2026 (¢)</th>
             <th class="num">Meta Sep 2026 (¢)</th>
             <th class="num">Total Q3 2026 (¢)</th>
-            <th class="num">Var % vs Q2 2025</th>
+            <th class="num">Var % vs Q3 2025</th>
             <th class="num">Ajuste %</th>
           </tr>
         </thead>
@@ -798,7 +798,7 @@ body {
             <th class="num">Meta Ago 2026 (¢)</th>
             <th class="num">Meta Sep 2026 (¢)</th>
             <th class="num">Total Q3 2026 (¢)</th>
-            <th class="num">Var % vs Q2 2025</th>
+            <th class="num">Var % vs Q3 2025</th>
             <th class="num">% Part.</th>
           </tr>
         </thead>
@@ -1569,7 +1569,7 @@ function renderKPIs(q2Hist, totalProj, budget, monthlyProj) {
   const varVsHist = ((totalProj - q2Hist) / q2Hist) * 100;
   const badge = document.getElementById('kpi_proj_badge');
   badge.className = 'kpi-badge ' + (varVsHist >= 0 ? 'badge-up' : 'badge-down');
-  badge.textContent = (varVsHist >= 0 ? '▲' : '▼') + ' ' + fmtPct(Math.abs(varVsHist)) + ' vs Q2 2025';
+  badge.textContent = (varVsHist >= 0 ? '▲' : '▼') + ' ' + fmtPct(Math.abs(varVsHist)) + ' vs Q3 2025';
 
   // Monthly projection breakdown — editable to redistribute
   if (monthlyProj) {
@@ -1915,7 +1915,7 @@ function renderPortCards(portProj) {
     document.getElementById(portCardIds[i]).innerHTML = `
       <div class="card-header">
         <div><div class="card-title" style="color:${color}">${port}</div><div class="card-sub">Meta Q3 2026</div></div>
-        <span class="kpi-badge ${varPct>=0?'badge-up':'badge-down'}">${fmtPct(varPct)} vs Q2 2025</span>
+        <span class="kpi-badge ${varPct>=0?'badge-up':'badge-down'}">${fmtPct(varPct)} vs Q3 2025</span>
       </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px">
         <div><div style="font-size:10px;color:var(--text2);margin-bottom:4px;letter-spacing:1px;text-transform:uppercase">Jul 2026</div><div style="font-family:var(--font-display);font-size:16px;font-weight:700">${fmt(d.proj[0])}</div></div>
@@ -1939,7 +1939,7 @@ function renderPortChart(portProj) {
   state.charts['portChart'] = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: [...months27, 'Abr 26', 'May 26', 'Jun 26'],
+      labels: [...months27, 'Jul 26', 'Ago 26', 'Sep 26'],
       datasets: portKeys.map((port, i) => ({
         label: port,
         data: [...portProj[port].historico, ...portProj[port].proj],
@@ -2546,7 +2546,7 @@ function makeAdjItem(type, key, label) {
 }
 
 function renderAdjPanels() {
-  // Vendedor adj — vs Q2 2025 mode
+  // Vendedor adj — vs Q3 2025 mode
   const vendProj = computeVendProjections();
   document.getElementById('adjVendedor').innerHTML = Object.keys(RAW_DATA.vendedores)
     .sort((a,b) => a.replace(/^\d+-/,'').trim().localeCompare(b.replace(/^\d+-/,'').trim(), 'es'))
@@ -2570,7 +2570,7 @@ function makeVendAdjItem(v, vp) {
   const hist25 = vp ? vp.histQ2_2025 : getHistQ2(RAW_DATA.vendedores[v].historico, 2025);
   const projTotal = vp ? vp.proj.reduce((a,b)=>a+b,0) : 0;
 
-  // Current var vs Q2 2025
+  // Current var vs Q3 2025
   const hasTarget = state.adjVsQ22025[v] !== undefined;
   const varPct = hasTarget
     ? state.adjVsQ22025[v]
@@ -2744,7 +2744,7 @@ function renderBudgetBreakdown() {
   if (!b || !isFinite(b)) return;
   const [wa, wm, wj] = getBudgetMonthlyWeights();
   const weights = [wa, wm, wj];
-  const labels = ['Abr', 'May', 'Jun'];
+  const labels = ['Jul', 'Ago', 'Sep'];
   const ids = ['bw_abr', 'bw_may', 'bw_jun'];
   const total = (wa + wm + wj) * 100;
   const sumOk = Math.abs(total - 100) < 0.2;
@@ -2802,7 +2802,7 @@ function updateBudgetWeight(idx, val) {
   // Only update the amount labels, not the input values (avoid cursor reset)
   const b = state.budgetTarget;
   const ids = ['bw_abr', 'bw_may', 'bw_jun'];
-  const labels = ['Abr', 'May', 'Jun'];
+  const labels = ['Jul', 'Ago', 'Sep'];
   // Recalculate sum indicator
   const total = w.reduce((s, v) => s + v, 0) * 100;
   const sumOk = Math.abs(total - 100) < 0.2;
@@ -2834,14 +2834,14 @@ function autoAdjust() {
     document.getElementById('autoAdjResult').innerHTML = '<span style="color:var(--teal)">✅ La proyección ya supera el presupuesto. No se requiere ajuste.</span>';
     return;
   }
-  // Calcular cuánto % crecimiento vs Q2 2025 se necesita en total
+  // Calcular cuánto % crecimiento vs Q3 2025 se necesita en total
   const totalHist25 = Object.values(vendProj).reduce((s,v)=>s+v.histQ2_2025, 0);
   const targetPct = totalHist25 > 0 ? (budget / totalHist25 - 1) * 100 : (budget / total - 1) * 100;
-  // Aplicar el mismo % vs Q2 2025 a cada vendedor
+  // Aplicar el mismo % vs Q3 2025 a cada vendedor
   Object.keys(RAW_DATA.vendedores).forEach(v => {
     state.adjVsQ22025[v] = parseFloat(targetPct.toFixed(1));
   });
-  document.getElementById('autoAdjResult').innerHTML = `<span style="color:var(--gold)">⚡ Se aplicó <strong>+${targetPct.toFixed(1)}% vs Q2 2025</strong> a todos los vendedores para alcanzar el presupuesto de <strong>¢${fmt(budget)}</strong>.</span>`;
+  document.getElementById('autoAdjResult').innerHTML = `<span style="color:var(--gold)">⚡ Se aplicó <strong>+${targetPct.toFixed(1)}% vs Q3 2025</strong> a todos los vendedores para alcanzar el presupuesto de <strong>¢${fmt(budget)}</strong>.</span>`;
   renderAdjPanels();
   render();
 }
@@ -2884,7 +2884,7 @@ function exportPDF() {
   document.getElementById('pdfKPIs').innerHTML = [
     { label:'Venta Q2 2025', val:'¢'+fmt(q2Hist), sub:'Histórico real', color:'var(--text)' },
     { label:'Presupuesto Q3 2026', val:'¢'+fmt(budget), sub:'Meta estratégica', color:'#c47a00' },
-    { label:'Meta Q3 2026', val:'¢'+fmt(totalProj), sub:(varHist>=0?'▲':'▼')+' '+fmtPct(Math.abs(varHist))+' vs Q2 2025', color:'var(--blue)' },
+    { label:'Meta Q3 2026', val:'¢'+fmt(totalProj), sub:(varHist>=0?'▲':'▼')+' '+fmtPct(Math.abs(varHist))+' vs Q3 2025', color:'var(--blue)' },
     { label:'Cumplimiento', val:cumpl.toFixed(1)+'%', sub:cumpl>=100?'✓ Meta alcanzada':'Brecha: ¢'+fmt(budget-totalProj), color:kpiColor }
   ].map(k=>`
     <div style="border:1px solid #dde3ee;border-radius:10px;padding:14px;background:#f8fafd">
@@ -3027,12 +3027,12 @@ function exportExcel() {
     ['Venta Q2 2025 (Histórico)', q2Hist],
     ['Presupuesto Q3 2026', state.budgetTarget],
     ['Meta Q3 2026', totalProj],
-    ['Var % vs Q2 2025', ((totalProj - q2Hist)/q2Hist*100).toFixed(2) + '%'],
+    ['Var % vs Q3 2025', ((totalProj - q2Hist)/q2Hist*100).toFixed(2) + '%'],
     ['Cumplimiento Presupuesto', (totalProj/state.budgetTarget*100).toFixed(2) + '%']
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumen), 'Resumen');
 
-  const vendRows = [['Vendedor','Hist Q2 2024 (¢)','Hist Q3 2025 (¢)','Meta Jul 2026 (¢)','Meta Ago 2026 (¢)','Meta Sep 2026 (¢)','Total Q3 2026 (¢)','Var % vs Q2 2025','Ajuste %']];
+  const vendRows = [['Vendedor','Hist Q2 2024 (¢)','Hist Q3 2025 (¢)','Meta Jul 2026 (¢)','Meta Ago 2026 (¢)','Meta Sep 2026 (¢)','Total Q3 2026 (¢)','Var % vs Q3 2025','Ajuste %']];
   Object.entries(vendProj).sort((a,b)=>b[1].proj.reduce((s,v)=>s+v,0)-a[1].proj.reduce((s,v)=>s+v,0)).forEach(([v,d])=>{
     const total = d.proj.reduce((a,b)=>a+b,0);
     const varPct = d.histQ2_2025>0?((total-d.histQ2_2025)/d.histQ2_2025*100):0;
@@ -3040,7 +3040,7 @@ function exportExcel() {
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(vendRows), 'Por Vendedor');
 
-  const marcaRows = [['Marca','Hist Q2 2024 (¢)','Hist Q3 2025 (¢)','Meta Jul 2026 (¢)','Meta Ago 2026 (¢)','Meta Sep 2026 (¢)','Total Q3 2026 (¢)','Var % vs Q2 2025']];
+  const marcaRows = [['Marca','Hist Q2 2024 (¢)','Hist Q3 2025 (¢)','Meta Jul 2026 (¢)','Meta Ago 2026 (¢)','Meta Sep 2026 (¢)','Total Q3 2026 (¢)','Var % vs Q3 2025']];
   Object.entries(marcaProj).sort((a,b)=>b[1].proj.reduce((s,v)=>s+v,0)-a[1].proj.reduce((s,v)=>s+v,0)).forEach(([m,d])=>{
     const total = d.proj.reduce((a,b)=>a+b,0);
     const varPct = d.histQ2_2025>0?((total-d.histQ2_2025)/d.histQ2_2025*100):0;
@@ -3066,7 +3066,7 @@ function exportExcel() {
   });
   const histPortGrand = Object.values(pp).reduce((s,d)=>s+d.histQ2_2025,0)||1;
   const vpRows = [['Tipo','Zona / Vendedor','Hist Q3 2025 (¢)','Hist Q2 2024 (¢)',
-    'Meta Jul 2026 (¢)','Meta Ago 2026 (¢)','Meta Sep 2026 (¢)','Total Q3 2026 (¢)','Var % vs Q2 2025','% Participación']];
+    'Meta Jul 2026 (¢)','Meta Ago 2026 (¢)','Meta Sep 2026 (¢)','Total Q3 2026 (¢)','Var % vs Q3 2025','% Participación']];
   const vpSorted = Object.entries(vp)
     .map(([v,d])=>({v,...d,total:d.proj.reduce((a,b)=>a+b,0)}))
     .sort((a,b)=>a.v.replace(/^\d+-/,'').trim().localeCompare(b.v.replace(/^\d+-/,'').trim(),'es'));
@@ -3097,7 +3097,7 @@ function exportExcel() {
   const marcaProj2 = computeMarcaProjections();
   const marcaGrand2 = Object.values(marcaProj2).reduce((s,d)=>s+d.proj.reduce((a,b)=>a+b,0),0)||1;
   const vmRows = [['Tipo','Vendedor / Marca','Hist Q3 2025 (¢)','Hist Q2 2024 (¢)',
-    'Meta Jul 2026 (¢)','Meta Ago 2026 (¢)','Meta Sep 2026 (¢)','Total Q3 2026 (¢)','Var % vs Q2 2025','% Participación']];
+    'Meta Jul 2026 (¢)','Meta Ago 2026 (¢)','Meta Sep 2026 (¢)','Total Q3 2026 (¢)','Var % vs Q3 2025','% Participación']];
   const vmSorted = Object.entries(vendProj)
     .map(([v,d])=>({v,...d,total:d.proj.reduce((a,b)=>a+b,0)}))
     .sort((a,b)=>b.total-a.total);
@@ -3128,7 +3128,7 @@ function exportExcel() {
 
   // Sheet 7: Vendedor × Cliente
   const vcRows = [['Tipo','Vendedor / Cliente','Hist Q3 2025 (¢)','Hist Q2 2024 (¢)',
-    'Meta Jul 2026 (¢)','Meta Ago 2026 (¢)','Meta Sep 2026 (¢)','Total Q3 2026 (¢)','Var % vs Q2 2025','% Participación']];
+    'Meta Jul 2026 (¢)','Meta Ago 2026 (¢)','Meta Sep 2026 (¢)','Total Q3 2026 (¢)','Var % vs Q3 2025','% Participación']];
   const hasMapping = RAW_DATA.vendedorClientes && Object.keys(RAW_DATA.vendedorClientes).length>0;
   const grandVCTotal = vmSorted.reduce((s,x)=>s+x.total,0)||1;
   vmSorted.forEach(x => {
