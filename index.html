@@ -2535,11 +2535,11 @@ function renderClientTable(clientProj) {
     const varPct = x.histQ2_2025 > 0 ? ((x.total - x.histQ2_2025)/x.histQ2_2025*100) : 0;
     // Get legal name from RAW_DATA.clientes
     const nombre = RAW_DATA.clientes[x.cl]?.nombre || '';
-    const showNombre = nombre && nombre !== x.cl;
-    const clientCell = showNombre
+    // Show legal name on top, alias below — always when we have nombre from Supabase
+    const clientCell = nombre
       ? `<div style="font-weight:500;line-height:1.3">${nombre}</div>
-         <div style="font-size:10px;color:var(--text3);margin-top:2px;font-style:italic">${x.cl}</div>`
-      : `<div>${x.cl}</div>`;
+         <div style="font-size:10px;color:var(--text3);margin-top:1px">↳ ${x.cl}</div>`
+      : `<div style="font-weight:500">${x.cl}</div>`;
     return `<tr>
       <td style="color:var(--text2)">${idx+1}</td>
       <td style="max-width:200px">${clientCell}</td>
