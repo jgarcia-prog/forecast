@@ -513,7 +513,10 @@ body {
     <button class="btn btn-ai" onclick="openAIAnalysis()">🤖 Análisis AI</button>
     <button class="btn btn-gold" onclick="exportExcel()">↓ Exportar Excel</button>
     <button class="btn btn-save" id="saveBtn" onclick="saveState()" title="Guardar estado actual">💾 Guardar</button>
-    <button class="btn btn-outline" onclick="openEmailModal()" style="border-color:#7c3aed;color:#7c3aed" title="Enviar metas por correo a vendedores">📧 Enviar Metas</button>
+    <button onclick="openEmailModal()" title="Enviar metas por correo a vendedores" style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border:none;border-radius:8px;background:#009ee3;color:#fff;font-size:13px;font-weight:600;cursor:pointer;letter-spacing:0.2px">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      Enviar Metas a Vendedores
+    </button>
     <span id="saveIndicator" style="display:none;font-size:11px;color:var(--text3);margin-left:2px"></span>
   </div>
 </div>
