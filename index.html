@@ -1994,18 +1994,20 @@ function renderVCMTable(vendProj) {
         const cH25    = cd.histQ2_2025||0;
         const cVar    = cH25>0?((cTot-cH25)/cH25*100):0;
         const rowId   = `vcm_${vidx}_${cidx}`;
+        const safeVend  = x.v.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+        const safeAlias = alias.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 
-        html += `<tr class="vp-port-row p2 hidden" data-vcm-vend="${vidx}" onclick="toggleVCMCliente('${rowId}','${x.v.replace(/'/g,"\\'")}','${alias.replace(/'/g,"\\'")}')">
+        html += `<tr class="vp-port-row p2 hidden" data-vcm-vend="${vidx}" onclick="toggleVCMCliente('${rowId}','${safeVend}','${safeAlias}')">
           <td style="padding-left:28px"><span class="vp-toggle" id="${rowId}_tog">+</span>🏪 ${alias}</td>
           <td class="num">${fmt(cH25)}</td>
           <td class="num">${fmt(cAbr)}</td><td class="num">${fmt(cMay)}</td><td class="num">${fmt(cJun)}</td>
           <td class="num" style="font-weight:600">${fmt(cTot)}</td>
           <td class="num ${cVar>=0?'pos':'neg'}">${fmtPct(cVar)}</td>
         </tr>
-        <tr class="hidden" id="${rowId}_marcas">
+        <tr class="vp-port-row hidden" data-vcm-vend="${vidx}" data-vcm-marca-row="${rowId}" style="display:none !important">
           <td colspan="7" style="padding:0">
             <div id="${rowId}_content" style="padding:6px 28px 6px 52px;background:var(--bg3)">
-              <span style="color:var(--text3);font-size:12px">Cargando marcas...</span>
+              <span style="color:var(--text3);font-size:12px">↑ Clic en el cliente para cargar sus marcas</span>
             </div>
           </td>
         </tr>`;
@@ -2041,25 +2043,25 @@ function toggleVCMVendedor(vidx) {
 }
 
 function collapseVCMCliente(rowId) {
-  const marcaRow = document.getElementById(`${rowId}_marcas`);
-  if (marcaRow) marcaRow.classList.add('hidden');
+  const marcaRow = document.querySelector(`tr[data-vcm-marca-row="${rowId}"]`);
+  if (marcaRow) marcaRow.style.display = 'none';
   const tog = document.getElementById(`${rowId}_tog`);
   if (tog) tog.textContent = '+';
 }
 
 async function toggleVCMCliente(rowId, vendedor, alias) {
-  const marcaRow = document.getElementById(`${rowId}_marcas`);
+  const marcaRow = document.querySelector(`tr[data-vcm-marca-row="${rowId}"]`);
   const tog      = document.getElementById(`${rowId}_tog`);
   if (!marcaRow) return;
 
-  const isOpen = !marcaRow.classList.contains('hidden');
+  const isOpen = marcaRow.style.display !== 'none' && marcaRow.style.display !== '';
   if (isOpen) {
-    marcaRow.classList.add('hidden');
+    marcaRow.style.display = 'none';
     if (tog) tog.textContent = '+';
     return;
   }
 
-  marcaRow.classList.remove('hidden');
+  marcaRow.style.display = 'table-row';
   if (tog) tog.textContent = '−';
 
   // Use cache or fetch
@@ -2096,7 +2098,7 @@ async function toggleVCMCliente(rowId, vendedor, alias) {
     const pColor = PORT_COLORS_MAP[m.portafolio] || 'var(--text3)';
     return `<tr style="border-bottom:1px solid var(--border)">
       <td style="padding:5px 8px;font-size:12px">
-        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${pColor};margin-right:6px;flex-shrink:0"></span>
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${pColor};margin-right:6px"></span>
         🏷️ ${m.marca}
         <span style="font-size:10px;color:var(--text3);margin-left:4px">${m.portafolio}</span>
       </td>
@@ -2112,6 +2114,7 @@ async function toggleVCMCliente(rowId, vendedor, alias) {
   document.getElementById(`${rowId}_content`).innerHTML =
     `<table style="width:100%;border-collapse:collapse"><tbody>${table}</tbody></table>`;
 }
+
 
 function renderVendMarcaTable(vendProj) {
   const sorted = Object.entries(vendProj)
