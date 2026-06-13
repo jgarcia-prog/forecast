@@ -3198,15 +3198,15 @@ function exportExcel() {
   });
   XLSX.utils.book_append_sheet(wb, mkWS(zpRows, [10,35,14,18,18,18,18,18,20,10,10], [3,4,5,6,7,8], [9,10]), '6_Zona_Vendedores');
 
-  // ── HOJA 7: VEND-CLIENTE ─────────────────────────────────────────────────
+  // ── HOJA 7: VEND-CLIENTE (con Razón Social + Código/Alias) ──────────────
   const hasMap = RAW_DATA.vendedorClientes&&Object.keys(RAW_DATA.vendedorClientes).length>0;
-  const vcH = ['Nivel','Zona de Venta','Cliente / Alias','Hist Q3 2024 ¢','Hist Q3 2025 ¢',
+  const vcH = ['Nivel','Zona de Venta','Razón Social','Código / Alias','Hist Q3 2024 ¢','Hist Q3 2025 ¢',
     'Meta Jul 2026 ¢','Meta Ago 2026 ¢','Meta Sep 2026 ¢','Total Q3 2026 ¢','Var %','% Part.'];
   const vcGrand = vSorted.reduce((s,x)=>s+x.total,0)||1;
   const vcRows = [vcH];
   vSorted.forEach(x=>{
     const va=x.histQ2_2025>0?(x.total-x.histQ2_2025)/x.histQ2_2025:0;
-    vcRows.push(['ZONA', x.v.replace(/^\d+-/,'').trim(), '', x.histQ2_2024, x.histQ2_2025, x.proj[0], x.proj[1], x.proj[2], x.total, va, x.total/vcGrand]);
+    vcRows.push(['ZONA', x.v.replace(/^\d+-/,'').trim(), '', '', x.histQ2_2024, x.histQ2_2025, x.proj[0], x.proj[1], x.proj[2], x.total, va, x.total/vcGrand]);
     if (!hasMap) return;
     let vc = RAW_DATA.vendedorClientes[x.v] || RAW_DATA.vendedorClientes[Object.keys(RAW_DATA.vendedorClientes).find(k=>k.split('-')[0]===x.v.split('-')[0])||''] || {};
     const vcHT = Object.values(vc).reduce((s,d)=>s+(d.histQ2_2025||0),0)||1;
@@ -3217,10 +3217,11 @@ function exportExcel() {
       const cH25=cd.histQ2_2025||0, cH24=cd.histQ2_2024||0;
       const cVar=cH25>0?(cTot-cH25)/cH25:0;
       const nombre=RAW_DATA.clientes[cl]?.nombre||'';
-      vcRows.push(['  CLIENTE','  '+x.v.replace(/^\d+-/,'').trim(), nombre||cl, Math.round(cH24), Math.round(cH25), Math.round(cAbr), Math.round(cMay), Math.round(cJun), Math.round(cTot), cVar, cTot/vcGrand]);
+      // Col: Nivel | Zona | Razón Social | Código/Alias | h24 | h25 | jul | ago | sep | tot | var | part
+      vcRows.push(['  CLIENTE','  '+x.v.replace(/^\d+-/,'').trim(), nombre||cl, nombre?cl:'', Math.round(cH24), Math.round(cH25), Math.round(cAbr), Math.round(cMay), Math.round(cJun), Math.round(cTot), cVar, cTot/vcGrand]);
     });
   });
-  XLSX.utils.book_append_sheet(wb, mkWS(vcRows, [10,35,40,18,18,18,18,18,20,10,10], [3,4,5,6,7,8], [9,10]), '7_Vend_Cliente');
+  XLSX.utils.book_append_sheet(wb, mkWS(vcRows, [10,35,40,30,18,18,18,18,18,20,10,10], [4,5,6,7,8,9], [10,11]), '7_Vend_Cliente');
 
   // ── HOJA 8: VEND-MARCA ───────────────────────────────────────────────────
   const vmH = ['Nivel','Zona de Venta','Portafolio','Marca','Hist Q3 2024 ¢','Hist Q3 2025 ¢',
@@ -3244,6 +3245,47 @@ function exportExcel() {
     });
   });
   XLSX.utils.book_append_sheet(wb, mkWS(vmRows, [10,35,14,30,18,18,18,18,18,20,10,10], [4,5,6,7,8,9], [10,11]), '8_Vend_Marca');
+
+  // ── HOJA 9: VEND-CLIENTE-MARCA (desde caché o Supabase) ──────────────────
+  const vcmH = ['Nivel','Zona de Venta','Razón Social','Código / Alias','Portafolio','Marca',
+    'Hist Q3 2024 ¢','Hist Q3 2025 ¢','Meta Q3 2026 ¢','Var %'];
+  const vcmRows = [vcmH];
+  const vcmGrand = vSorted.reduce((s,x)=>s+x.total,0)||1;
+
+  vSorted.forEach(x => {
+    const va = x.histQ2_2025>0?(x.total-x.histQ2_2025)/x.histQ2_2025:0;
+    vcmRows.push(['ZONA', x.v.replace(/^\d+-/,'').trim(), '','','','', x.histQ2_2024, x.histQ2_2025, x.total, va]);
+
+    if (!hasMap) return;
+    let vc = RAW_DATA.vendedorClientes[x.v] || RAW_DATA.vendedorClientes[Object.keys(RAW_DATA.vendedorClientes).find(k=>k.split('-')[0]===x.v.split('-')[0])||''] || {};
+    const vcHT = Object.values(vc).reduce((s,d)=>s+(d.histQ2_2025||0),0)||1;
+
+    Object.entries(vc).sort((a,b)=>(b[1].histQ2_2025||0)-(a[1].histQ2_2025||0)).forEach(([cl, cd]) => {
+      const sh = (cd.histQ2_2025||0)/vcHT;
+      const cTot = (x.proj[0]+x.proj[1]+x.proj[2])*sh;
+      if (cTot < 10000) return;
+      const cH25 = cd.histQ2_2025||0, cH24 = cd.histQ2_2024||0;
+      const cVar = cH25>0?(cTot-cH25)/cH25:0;
+      const nombre = RAW_DATA.clientes[cl]?.nombre||'';
+
+      // Client row
+      vcmRows.push(['  CLIENTE','  '+x.v.replace(/^\d+-/,'').trim(), nombre||cl, nombre?cl:'', '','', Math.round(cH24), Math.round(cH25), Math.round(cTot), cVar]);
+
+      // Marca rows — from cache if available
+      const cacheKey = `${x.v}|${cl}`;
+      const marcasCache = _vcmCache[cacheKey];
+      if (marcasCache && marcasCache.length > 0) {
+        marcasCache.forEach(m => {
+          const mH25 = Number(m.hist_q3_2025)||0;
+          const mH24 = Number(m.hist_q3_2024)||0;
+          const mTot = Number(m.meta_q3)||0;
+          const mVar = mH25>0?(mTot-mH25)/mH25:0;
+          vcmRows.push(['    MARCA','    '+x.v.replace(/^\d+-/,'').trim(), nombre||cl, nombre?cl:'', m.portafolio||'', m.marca||'', Math.round(mH24), Math.round(mH25), Math.round(mTot), mVar]);
+        });
+      }
+    });
+  });
+  XLSX.utils.book_append_sheet(wb, mkWS(vcmRows, [10,35,40,30,14,30,18,18,20,10], [6,7,8], [9]), '9_Vend_Cliente_Marca');
 
   XLSX.writeFile(wb, 'Forecast_COFERSA_Q3_2026.xlsx');
 }
