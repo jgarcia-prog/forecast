@@ -2885,8 +2885,13 @@ function resetAllAdj() {
 
 // ==================== TAB SWITCHING ====================
 function switchTab(idx) {
+  // Activate the panel with id="tab{idx}"
   document.querySelectorAll('.panel-section').forEach((p, i) => p.classList.toggle('active', i === idx));
-  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === idx));
+  // Activate the TAB BUTTON that calls switchTab(idx) — not by DOM position
+  document.querySelectorAll('.tab').forEach(t => {
+    const match = t.getAttribute('onclick')?.match(/switchTab\((\d+)\)/);
+    t.classList.toggle('active', match && parseInt(match[1]) === idx);
+  });
   setTimeout(render, 50);
 }
 
