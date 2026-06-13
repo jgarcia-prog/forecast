@@ -664,6 +664,7 @@ body {
       <div class="kpi-label">Venta Q3 2025</div>
       <div class="kpi-value" id="kpi_hist">—</div>
       <div class="kpi-sub">Jul + Ago + Sep 2025</div>
+      <div id="histMonthlyBreakdown" style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px"></div>
     </div>
     <div class="kpi-card gold">
       <div class="kpi-label">Presupuesto Q3 2026</div>
@@ -1522,13 +1523,19 @@ function render() {
     }
   }
 
-  const totalProj = getTotalProjection(filtVendProj);
-  const q2Hist = Object.values(filtVendProj).reduce((s, v) => s + v.histQ2_2025, 0);
-  const budget = state.budgetTarget;
+  const totalProj  = getTotalProjection(filtVendProj);
+  const q2Hist     = Object.values(filtVendProj).reduce((s, v) => s + v.histQ2_2025, 0);
+  const budget     = state.budgetTarget;
   // Monthly projections for breakdown display
   const monthlyProj = [0,1,2].map(i => Object.values(filtVendProj).reduce((s,v)=>s+v.proj[i],0));
+  // Monthly Q3 2025 historical (indices 18,19,20 = Jul/Ago/Sep 2025)
+  // Use RAW_DATA.vendedores directly to access full historico
+  const vendKeys = Object.keys(filtVendProj);
+  const monthlyHist25 = [18,19,20].map(i =>
+    vendKeys.reduce((s, v) => s + (RAW_DATA.vendedores[v]?.historico?.[i] || 0), 0)
+  );
 
-  renderKPIs(q2Hist, totalProj, budget, monthlyProj);
+  renderKPIs(q2Hist, totalProj, budget, monthlyProj, monthlyHist25);
   renderAlerts(totalProj, budget);
   renderPortCards(portProj);
   renderVendTable(vendProj);
@@ -1561,10 +1568,24 @@ function fmtPct(v) {
   return `${s}${v.toFixed(1)}%`;
 }
 
-function renderKPIs(q2Hist, totalProj, budget, monthlyProj) {
+function renderKPIs(q2Hist, totalProj, budget, monthlyProj, monthlyHist25) {
   document.getElementById('kpi_hist').textContent = '¢' + fmt(q2Hist);
   document.getElementById('kpi_budget').textContent = '¢' + fmt(budget);
   document.getElementById('kpi_proj').textContent = '¢' + fmt(totalProj);
+
+  // Historical monthly breakdown (Jul/Ago/Sep 2025)
+  if (monthlyHist25 && document.getElementById('histMonthlyBreakdown')) {
+    const histTotal = monthlyHist25.reduce((a,b)=>a+b,0) || 1;
+    document.getElementById('histMonthlyBreakdown').innerHTML =
+      ['Jul 2025','Ago 2025','Sep 2025'].map((lbl, i) => {
+        const pct = (monthlyHist25[i] / histTotal * 100).toFixed(1);
+        return `<div style="background:rgba(0,0,0,0.04);border-radius:6px;padding:5px 6px;text-align:center">
+          <div style="font-size:9px;font-weight:700;letter-spacing:0.5px;color:var(--text2);margin-bottom:2px">${lbl}</div>
+          <div style="font-size:11px;font-weight:700;color:var(--text)">¢${(monthlyHist25[i]/1e6).toFixed(0)}M</div>
+          <div style="font-size:9px;color:var(--text3)">${pct}%</div>
+        </div>`;
+      }).join('');
+  }
 
   const varVsHist = ((totalProj - q2Hist) / q2Hist) * 100;
   const badge = document.getElementById('kpi_proj_badge');
