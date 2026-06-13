@@ -506,6 +506,9 @@ body {
       ↑ Cargar Excel
       <input type="file" id="fileUpload" accept=".xlsx,.xls,.csv" style="display:none" onchange="loadFile(this)">
     </label>
+    <button class="btn btn-outline" id="supabaseBtn" onclick="loadFromSupabase()" title="Cargar datos desde Supabase" style="border-color:#3ecf8e;color:#3ecf8e">
+      <span id="supabaseBtnText">⚡ Supabase</span>
+    </button>
     <button class="btn btn-outline btn-reset" onclick="resetData()" title="Limpiar ajustes y volver a los datos originales">🔄 Depurar datos</button>
     <button class="btn btn-ai" onclick="openAIAnalysis()">🤖 Análisis AI</button>
     <button class="btn btn-gold" onclick="exportExcel()">↓ Exportar Excel</button>
@@ -1240,13 +1243,11 @@ function getMonthIdx(name) {
 }
 
 function getHistQ2(historico, year) {
-  const meses = year === 2025
-    ? ['abril de 2025', 'mayo de 2025', 'junio de 2025']
-    : ['abril de 2024', 'mayo de 2024', 'junio de 2024'];
-  return meses.reduce((s, m) => {
-    const i = getMonthIdx(m);
-    return s + (i >= 0 && historico[i] ? historico[i] : 0);
-  }, 0);
+  // Fixed indices work for both:
+  // - Embedded data (27 months Jan2024-Mar2026): Q2 2024=[3,4,5], Q2 2025=[15,16,17]
+  // - Supabase data (30 months = 6 zeros + 24 real Jul2024-Jun2026): Q2 2024=[3,4,5]=0, Q2 2025=[15,16,17]
+  const idx = year === 2025 ? [15,16,17] : [3,4,5];
+  return idx.reduce((s, i) => s + (historico[i] || 0), 0);
 }
 
 // Returns projection for an entity — uses cached value for defaults,
@@ -2915,6 +2916,165 @@ function exportExcel() {
 }
 
 // ==================== FILE UPLOAD ====================
+// ==================== SUPABASE INTEGRATION ====================
+const SUPA_URL  = 'https://gjjizybsdqqcxrzmlzru.supabase.co';
+const SUPA_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdqaml6eWJzZHFxY3hyem1senJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwMzU1NDAsImV4cCI6MjA5NjYxMTU0MH0.dJg0eEJ_FTTArp8agJEq_crf3fctwA0gPsVi8b_W2kg';
+
+// Month labels for Supabase 24-month window (Jul 2024 – Jun 2026)
+// Padded with 6 zeros at start so Q2 2025 stays at indices 15-17 (same as embedded data)
+// PAD[0-5]=Jan-Jun2024(0), REAL[6-29]=Jul2024-Jun2026
+const SUPA_MONTH_LABELS = [
+  'ene-24','feb-24','mar-24','abr-24','may-24','jun-24', // padding (zeros)
+  'jul-24','ago-24','sep-24','oct-24','nov-24','dic-24',
+  'ene-25','feb-25','mar-25','abr-25','may-25','jun-25',
+  'jul-25','ago-25','sep-25','oct-25','nov-25','dic-25',
+  'ene-26','feb-26','mar-26','abr-26','may-26','jun-26'
+];
+
+async function supaRPC(fn) {
+  const res = await fetch(`${SUPA_URL}/rest/v1/rpc/${fn}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPA_KEY,
+      'Authorization': `Bearer ${SUPA_KEY}`
+    },
+    body: '{}'
+  });
+  if (!res.ok) throw new Error(`RPC ${fn} failed: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+function rowToHist(row) {
+  // Convert m0-m23 row to a 30-element array (6 zeros + 24 real)
+  return [0,0,0,0,0,0, ...Array.from({length:24}, (_,i) => Number(row[`m${i}`]) || 0)];
+}
+
+async function loadFromSupabase() {
+  const btn  = document.getElementById('supabaseBtn');
+  const txt  = document.getElementById('supabaseBtnText');
+  btn.disabled = true;
+  txt.textContent = '⏳ Cargando...';
+  document.getElementById('dataStatus').textContent = '⏳ Conectando a Supabase...';
+  document.getElementById('dataStatus').className = 'status-chip chip-warn';
+
+  try {
+    // Fetch all 3 RPCs in parallel
+    const [vendRows, marcaRows, clienteRows] = await Promise.all([
+      supaRPC('get_vendedores_hist'),
+      supaRPC('get_marcas_hist'),
+      supaRPC('get_clientes_hist')
+    ]);
+
+    // ── Build RAW_DATA.vendedores ─────────────────────────────
+    const newVendedores = {};
+    vendRows.forEach(r => {
+      if (!r.vendedor) return;
+      const hist = rowToHist(r);
+      newVendedores[r.vendedor] = {
+        historico:  hist,
+        proyeccion: projectQ2JS(hist),
+        _reasigned: false
+      };
+    });
+
+    // ── Build RAW_DATA.marcas ─────────────────────────────────
+    const newMarcas = {};
+    marcaRows.forEach(r => {
+      if (!r.marca) return;
+      const hist = rowToHist(r);
+      newMarcas[r.marca] = {
+        historico:  hist,
+        proyeccion: projectQ2JS(hist),
+        portafolio: r.portafolio || 'Sin Portafolio'
+      };
+    });
+
+    // ── Build RAW_DATA.portafolios ───────────────────────────
+    const newPortafolios = { 'Portafolio 1': null, 'Portafolio 2': null, 'Portafolio 3': null };
+    Object.values(newMarcas).forEach(m => {
+      const p = m.portafolio;
+      if (!newPortafolios[p]) newPortafolios[p] = Array(30).fill(0);
+      m.historico.forEach((v, i) => { newPortafolios[p][i] += v; });
+    });
+    const newPortObj = {};
+    Object.entries(newPortafolios).forEach(([p, hist]) => {
+      if (!hist) hist = Array(30).fill(0);
+      newPortObj[p] = { historico: hist, proyeccion: projectQ2JS(hist) };
+    });
+
+    // ── Build RAW_DATA.clientes + vendedorClientes ───────────
+    const newClientes = {};
+    const newVendCli  = {};
+    clienteRows.forEach(r => {
+      if (!r.alias) return;
+      const hist = rowToHist(r);
+      const h25  = Number(r.hist_q2_2025) || 0;
+
+      // Aggregate by alias across multiple vendors
+      if (!newClientes[r.alias]) {
+        newClientes[r.alias] = { historico: Array(30).fill(0), proyeccion: null };
+      }
+      hist.forEach((v, i) => { newClientes[r.alias].historico[i] += v; });
+
+      // vendedorClientes
+      if (r.vendedor) {
+        if (!newVendCli[r.vendedor]) newVendCli[r.vendedor] = {};
+        if (!newVendCli[r.vendedor][r.alias]) {
+          newVendCli[r.vendedor][r.alias] = { historico: Array(30).fill(0), histQ2_2025: 0, histQ2_2024: 0 };
+        }
+        hist.forEach((v, i) => { newVendCli[r.vendedor][r.alias].historico[i] += v; });
+        newVendCli[r.vendedor][r.alias].histQ2_2025 += h25;
+      }
+    });
+    // Compute proyeccion for clientes
+    Object.values(newClientes).forEach(c => { c.proyeccion = projectQ2JS(c.historico); });
+
+    // ── Monthly totals ───────────────────────────────────────
+    const newMonthlyTotal = Array(30).fill(0);
+    Object.values(newVendedores).forEach(v => {
+      v.historico.forEach((val, i) => { newMonthlyTotal[i] += val; });
+    });
+
+    // ── Apply to RAW_DATA ────────────────────────────────────
+    RAW_DATA.vendedores     = newVendedores;
+    RAW_DATA.marcas         = newMarcas;
+    RAW_DATA.portafolios    = newPortObj;
+    RAW_DATA.clientes       = newClientes;
+    RAW_DATA.vendedorClientes = newVendCli;
+    RAW_DATA.monthly_total  = newMonthlyTotal;
+    RAW_DATA.months         = SUPA_MONTH_LABELS;
+
+    // Store original snapshot for reasignaciones rebuild
+    window._originalVendedorClientes = JSON.parse(JSON.stringify(newVendCli));
+    window._rawDataModified = true;
+
+    // Reset adjustments for new vendor set
+    state.adjustments = { vendedores: {}, marcas: {}, portafolios: {} };
+    state.reasignaciones = [];
+    initAdjustments();
+    populateFilters();
+    renderBudgetBreakdown();
+    renderAdjPanels();
+    renderReasigList();
+    render();
+
+    document.getElementById('dataStatus').textContent = `● Supabase · ${vendRows.length} zonas · ${Object.keys(newClientes).length} clientes`;
+    document.getElementById('dataStatus').className = 'status-chip chip-ok';
+    txt.textContent = '✓ Supabase';
+    btn.style.background = 'rgba(62,207,142,0.1)';
+
+  } catch(err) {
+    console.error('Supabase error:', err);
+    document.getElementById('dataStatus').textContent = '⚠ Error Supabase: ' + err.message;
+    document.getElementById('dataStatus').className = 'status-chip chip-warn';
+    txt.textContent = '⚡ Supabase';
+    alert('Error al conectar con Supabase:\n' + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 function loadFile(input) {
   const file = input.files[0];
   if (!file) return;
