@@ -3268,25 +3268,21 @@ async function _doExportExcel(exportBtn) {
   if (hasSupabase) {
     // Fetch all rows in pages of 10000
     if (exportBtn) exportBtn.textContent = '⏳ Cargando VCM...';
-    const PAGE = 10000;
-    let offset = 0, done = false;
-    while (!done) {
-      const res = await fetch(`${SUPA_URL}/rest/v1/rpc/get_vcm_export`, {
+    try {
+      const res = await fetch(`${SUPA_URL}/rest/v1/rpc/get_vcm_export?limit=50000`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'apikey': SUPA_KEY,
           'Authorization': `Bearer ${SUPA_KEY}`,
-          'Range': `${offset}-${offset+PAGE-1}`,
           'Prefer': 'count=none'
         },
         body: '{}'
       });
-      const page = await res.json();
-      if (!Array.isArray(page) || page.length === 0) { done = true; break; }
-      vcmData = vcmData.concat(page);
-      if (page.length < PAGE) done = true;
-      offset += PAGE;
+      const data = await res.json();
+      if (Array.isArray(data)) vcmData = data;
+    } catch(e) {
+      console.warn('VCM export fetch error:', e);
     }
   }
 
