@@ -1187,17 +1187,30 @@ body {
   <div style="background:var(--bg2);border-radius:16px;width:860px;max-width:95vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,0.4)">
     <!-- Header -->
     <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-      <div>
-        <div style="font-size:17px;font-weight:700;color:var(--text)">📧 Enviar Metas Q3 2026</div>
-        <div id="emailModalSub" style="font-size:12px;color:var(--text3);margin-top:2px">Correo individual a cada vendedor con copia al supervisor</div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="width:38px;height:38px;border-radius:10px;background:#009ee3;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </div>
+        <div>
+          <div style="font-size:17px;font-weight:700;color:var(--text)">Enviar Metas Q3 2026</div>
+          <div id="emailModalSub" style="font-size:12px;color:var(--text3);margin-top:2px">Correo individual a cada vendedor con copia al supervisor</div>
+        </div>
       </div>
       <button onclick="closeEmailModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text2)">✕</button>
     </div>
     <!-- Mode selector + Controls -->
     <div style="padding:12px 24px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--bg3)">
       <span style="font-size:12px;font-weight:600;color:var(--text2)">Enviar a:</span>
-      <button id="modeVendBtn" onclick="setEmailMode('vendedores')" class="btn btn-save" style="font-size:12px;padding:4px 14px;background:#7c3aed!important;border-color:#7c3aed!important">👤 Vendedores</button>
-      <button id="modeSuperBtn" onclick="setEmailMode('supervisores')" class="btn btn-outline" style="font-size:12px;padding:4px 14px;border-color:#7c3aed;color:#7c3aed">👥 Supervisores</button>
+      <div style="display:flex;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;background:var(--bg)">
+        <button id="modeVendBtn" onclick="setEmailMode('vendedores')" style="display:flex;align-items:center;gap:6px;padding:7px 16px;border:none;background:#009ee3;color:#fff;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.15s">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          Vendedores
+        </button>
+        <button id="modeSuperBtn" onclick="setEmailMode('supervisores')" style="display:flex;align-items:center;gap:6px;padding:7px 16px;border:none;border-left:1px solid #e5e7eb;background:transparent;color:var(--text2);font-size:12px;font-weight:600;cursor:pointer;transition:all 0.15s">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Supervisores
+        </button>
+      </div>
     </div>
     <div style="padding:12px 24px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <button class="btn btn-outline" onclick="selectAllEmails(true)" style="font-size:12px;padding:5px 12px">☑ Todos</button>
@@ -2970,11 +2983,10 @@ let _previewIdx = 0;
 function setEmailMode(mode) {
   _emailMode = mode;
   const isVend = mode === 'vendedores';
-  document.getElementById('modeVendBtn').style.background = isVend ? '#7c3aed' : '';
-  document.getElementById('modeVendBtn').style.borderColor = '#7c3aed';
-  document.getElementById('modeVendBtn').className = isVend ? 'btn btn-save' : 'btn btn-outline';
-  document.getElementById('modeSuperBtn').style.background = !isVend ? '#7c3aed' : '';
-  document.getElementById('modeSuperBtn').className = !isVend ? 'btn btn-save' : 'btn btn-outline';
+  document.getElementById('modeVendBtn').style.background = isVend ? '#009ee3' : 'transparent';
+  document.getElementById('modeVendBtn').style.color = isVend ? '#fff' : 'var(--text2)';
+  document.getElementById('modeSuperBtn').style.background = !isVend ? '#009ee3' : 'transparent';
+  document.getElementById('modeSuperBtn').style.color = !isVend ? '#fff' : 'var(--text2)';
   document.getElementById('emailModalSub').textContent = isVend
     ? 'Correo individual a cada vendedor con copia al supervisor'
     : 'Correo a cada supervisor con el resumen mensual de su equipo';
@@ -2989,8 +3001,10 @@ async function openEmailModal() {
   document.getElementById('emailVendorList').innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3)">⏳ Cargando vendedores...</div>';
   document.getElementById('emailStatus').textContent = '';
   // Reset mode buttons
-  document.getElementById('modeVendBtn').className = 'btn btn-save';
-  document.getElementById('modeSuperBtn').className = 'btn btn-outline';
+  document.getElementById('modeVendBtn').style.background = '#009ee3';
+  document.getElementById('modeVendBtn').style.color = '#fff';
+  document.getElementById('modeSuperBtn').style.background = 'transparent';
+  document.getElementById('modeSuperBtn').style.color = 'var(--text2)';
 
   try {
     const res = await fetch(`${SUPA_URL}/rest/v1/rpc/get_vendedores_emails`, {
