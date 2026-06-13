@@ -1186,25 +1186,30 @@ body {
     <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
       <div>
         <div style="font-size:17px;font-weight:700;color:var(--text)">📧 Enviar Metas Q3 2026</div>
-        <div style="font-size:12px;color:var(--text3);margin-top:2px">Correo individual a cada vendedor con copia al supervisor</div>
+        <div id="emailModalSub" style="font-size:12px;color:var(--text3);margin-top:2px">Correo individual a cada vendedor con copia al supervisor</div>
       </div>
       <button onclick="closeEmailModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text2)">✕</button>
     </div>
-    <!-- Controls -->
-    <div style="padding:16px 24px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <!-- Mode selector + Controls -->
+    <div style="padding:12px 24px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--bg3)">
+      <span style="font-size:12px;font-weight:600;color:var(--text2)">Enviar a:</span>
+      <button id="modeVendBtn" onclick="setEmailMode('vendedores')" class="btn btn-save" style="font-size:12px;padding:4px 14px;background:#7c3aed!important;border-color:#7c3aed!important">👤 Vendedores</button>
+      <button id="modeSuperBtn" onclick="setEmailMode('supervisores')" class="btn btn-outline" style="font-size:12px;padding:4px 14px;border-color:#7c3aed;color:#7c3aed">👥 Supervisores</button>
+    </div>
+    <div style="padding:12px 24px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <button class="btn btn-outline" onclick="selectAllEmails(true)" style="font-size:12px;padding:5px 12px">☑ Todos</button>
       <button class="btn btn-outline" onclick="selectAllEmails(false)" style="font-size:12px;padding:5px 12px">☐ Ninguno</button>
-      <input type="text" id="emailSearch" placeholder="🔍 Filtrar vendedor..." oninput="filterEmailList(this.value)" style="font-size:12px;padding:5px 10px;width:200px">
+      <input type="text" id="emailSearch" placeholder="🔍 Filtrar..." oninput="filterEmailList(this.value)" style="font-size:12px;padding:5px 10px;width:200px">
       <span id="emailSelectedCount" style="font-size:12px;color:var(--text3)"></span>
       <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;padding:4px 10px;border-radius:6px;border:1px solid #f59e0b;color:#b45309;background:#fffbeb">
-          <input type="checkbox" id="testModeToggle" style="accent-color:#f59e0b"> 🧪 Modo prueba — enviar solo a <strong>jgarcia@cofersa.cr</strong>
+          <input type="checkbox" id="testModeToggle" style="accent-color:#f59e0b"> 🧪 Modo prueba — solo a <strong>jgarcia@cofersa.cr</strong>
         </label>
         <button class="btn btn-outline" onclick="previewEmail()" style="font-size:12px;padding:5px 14px;border-color:#7c3aed;color:#7c3aed">👁 Vista previa</button>
         <button class="btn btn-save" id="sendEmailBtn" onclick="sendEmails()" style="font-size:12px;padding:5px 14px;background:#7c3aed!important;border-color:#7c3aed!important">📤 Enviar seleccionados</button>
       </div>
     </div>
-    <!-- Vendor list -->
+    <!-- List -->
     <div style="overflow-y:auto;flex:1;padding:16px 24px">
       <div id="emailVendorList" style="display:grid;gap:8px"></div>
     </div>
@@ -2951,13 +2956,36 @@ function switchTab(idx) {
 // ==================== EMAIL METAS ====================
 const getEdgeURL = () => `${SUPA_URL}/functions/v1/send-meta-email`;
 let _emailVendorData = [];
+let _emailSuperData = []; // grouped by supervisor
+let _emailMode = 'vendedores'; // 'vendedores' | 'supervisores'
 let _previewList = [];
 let _previewIdx = 0;
 
+function setEmailMode(mode) {
+  _emailMode = mode;
+  const isVend = mode === 'vendedores';
+  document.getElementById('modeVendBtn').style.background = isVend ? '#7c3aed' : '';
+  document.getElementById('modeVendBtn').style.borderColor = '#7c3aed';
+  document.getElementById('modeVendBtn').className = isVend ? 'btn btn-save' : 'btn btn-outline';
+  document.getElementById('modeSuperBtn').style.background = !isVend ? '#7c3aed' : '';
+  document.getElementById('modeSuperBtn').className = !isVend ? 'btn btn-save' : 'btn btn-outline';
+  document.getElementById('emailModalSub').textContent = isVend
+    ? 'Correo individual a cada vendedor con copia al supervisor'
+    : 'Correo a cada supervisor con el resumen mensual de su equipo';
+  document.getElementById('emailSearch').placeholder = isVend ? '🔍 Filtrar vendedor...' : '🔍 Filtrar supervisor...';
+  if (isVend) renderEmailList(_emailVendorData);
+  else renderSupervisorList(_emailSuperData);
+}
+
 async function openEmailModal() {
+  _emailMode = 'vendedores';
   document.getElementById('emailModal').style.display = 'flex';
   document.getElementById('emailVendorList').innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3)">⏳ Cargando vendedores...</div>';
   document.getElementById('emailStatus').textContent = '';
+  // Reset mode buttons
+  document.getElementById('modeVendBtn').className = 'btn btn-save';
+  document.getElementById('modeSuperBtn').className = 'btn btn-outline';
+
   try {
     const res = await fetch(`${SUPA_URL}/rest/v1/rpc/get_vendedores_emails`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }, body: '{}'
@@ -2968,12 +2996,135 @@ async function openEmailModal() {
       label: r.vendedor_secundario.replace(/^\d+-/, '').trim(),
       correo: r.correo_vendedor, correo_supervisor: r.correo_supervisor,
       supervisor: r.supervisor?.replace(/^\d+-/, '').trim() || '',
+      supervisor_raw: r.supervisor || '',
       portafolio: r.portafolio || 'Portafolio 0'
     }));
+
+    // Build supervisor groups
+    const superMap = {};
+    _emailVendorData.forEach(v => {
+      if (!superMap[v.supervisor_raw]) superMap[v.supervisor_raw] = { label: v.supervisor, correo: v.correo_supervisor, vendedores: [] };
+      superMap[v.supervisor_raw].vendedores.push(v);
+    });
+    _emailSuperData = Object.values(superMap).filter(s => s.correo).sort((a,b) => a.label.localeCompare(b.label, 'es'));
+
     renderEmailList(_emailVendorData);
   } catch(e) {
     document.getElementById('emailVendorList').innerHTML = `<div style="color:var(--red)">${e.message}</div>`;
   }
+}
+
+function renderSupervisorList(list) {
+  document.getElementById('emailVendorList').innerHTML = list.map((s, i) => {
+    return `<label style="display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:var(--bg)">
+      <input type="checkbox" class="email-cb" data-idx="${i}" data-mode="supervisores" checked style="width:15px;height:15px;accent-color:#7c3aed" onchange="updateEmailCount()">
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:600;color:var(--text)">👥 ${s.label}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">
+          ✉️ ${s.correo} &nbsp;·&nbsp;
+          ${s.vendedores.length} vendedor${s.vendedores.length !== 1 ? 'es' : ''}: <span style="color:var(--text2)">${s.vendedores.map(v=>v.label).join(', ')}</span>
+        </div>
+      </div></label>`;
+  }).join('');
+  updateEmailCount();
+}
+
+function buildSupervisorEmailHTML(supervisor, vendedoresData) {
+  const fm = n => '¢' + Math.round(n).toLocaleString('es-CR');
+  const fp = n => (n >= 0 ? '▲ +' : '▼ ') + Math.abs(n).toFixed(1) + '%';
+  const vc = v => v >= 0 ? '#059669' : '#dc2626';
+
+  const vendProj = computeVendProjections();
+  const teamRows = vendedoresData
+    .map(v => {
+      const p = vendProj[v.vendedor];
+      if (!p) return null;
+      const total = p.proj.reduce((a,b)=>a+b,0);
+      const vt = p.histQ2_2025 > 0 ? ((total - p.histQ2_2025) / p.histQ2_2025) * 100 : 0;
+      return { label: v.label, proj: p.proj, total, hist: p.histQ2_2025, vt };
+    })
+    .filter(Boolean)
+    .sort((a,b) => b.total - a.total);
+
+  const teamTotal  = teamRows.reduce((s,r)=>s+r.total,0);
+  const teamHist   = teamRows.reduce((s,r)=>s+r.hist,0);
+  const teamJul    = teamRows.reduce((s,r)=>s+r.proj[0],0);
+  const teamAgo    = teamRows.reduce((s,r)=>s+r.proj[1],0);
+  const teamSep    = teamRows.reduce((s,r)=>s+r.proj[2],0);
+  const teamVar    = teamHist > 0 ? ((teamTotal - teamHist) / teamHist) * 100 : 0;
+
+  const rows = teamRows.map(r => {
+    return `<tr style="border-bottom:1px solid #e5e7eb">
+      <td style="padding:10px 12px;font-size:13px;color:#111827">${r.label}</td>
+      <td style="padding:10px 12px;font-size:13px;text-align:right;color:#374151">${fm(r.proj[0])}</td>
+      <td style="padding:10px 12px;font-size:13px;text-align:right;color:#374151">${fm(r.proj[1])}</td>
+      <td style="padding:10px 12px;font-size:13px;text-align:right;color:#374151">${fm(r.proj[2])}</td>
+      <td style="padding:10px 12px;font-size:13px;text-align:right;font-weight:700;color:#0f766e">${fm(r.total)}</td>
+      <td style="padding:10px 12px;font-size:13px;text-align:right;color:${vc(r.vt)}">${fp(r.vt)}</td>
+    </tr>`;
+  }).join('');
+
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:700px;margin:24px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)">
+  <tr><td style="padding:28px 32px 16px">
+    <div style="font-size:16px;color:#111827;font-weight:600">Estimado/a ${supervisor},</div>
+    <div style="font-size:14px;color:#6b7280;margin-top:8px;line-height:1.6">A continuación encontrás el resumen de metas Q3 2026 de tu equipo.</div>
+  </td></tr>
+  <!-- KPI equipo -->
+  <tr><td style="padding:0 32px 24px">
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-radius:10px;overflow:hidden;border:1px solid #e5e7eb">
+      <tr style="background:#f0fdf4">
+        <td style="padding:16px 20px">
+          <div style="font-size:11px;font-weight:700;color:#059669;letter-spacing:0.8px;text-transform:uppercase">Meta Total Equipo Q3 2026</div>
+          <div style="font-size:26px;font-weight:800;color:#064e3b;margin-top:4px">${fm(teamTotal)}</div>
+        </td>
+        <td style="padding:16px 20px;text-align:right;border-left:1px solid #d1fae5">
+          <div style="font-size:11px;font-weight:700;color:#6b7280;letter-spacing:0.8px;text-transform:uppercase">Q3 2025 Real</div>
+          <div style="font-size:20px;font-weight:700;color:#374151;margin-top:4px">${fm(teamHist)}</div>
+          <div style="font-size:14px;font-weight:700;color:${vc(teamVar)};margin-top:4px">${fp(teamVar)}</div>
+        </td>
+      </tr>
+      <tr style="background:#f0fdf4;border-top:1px solid #d1fae5">
+        ${[['Jul 2026',teamJul],['Ago 2026',teamAgo],['Sep 2026',teamSep]].map(([mes,v],i)=>`
+        <td style="padding:10px 20px;text-align:center;${i>0?'border-left:1px solid #d1fae5':''}">
+          <div style="font-size:10px;font-weight:700;color:#6b7280">${mes}</div>
+          <div style="font-size:15px;font-weight:700;color:#064e3b;margin-top:3px">${fm(v)}</div>
+          <div style="font-size:10px;color:#9ca3af">${teamTotal>0?(v/teamTotal*100).toFixed(1):'0.0'}%</div>
+        </td>`).join('')}
+      </tr>
+    </table>
+  </td></tr>
+  <!-- Tabla equipo -->
+  <tr><td style="padding:0 32px 32px">
+    <div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">Metas por Vendedor</div>
+    <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #e5e7eb">
+      <thead><tr style="background:#009ee3">
+        <th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:left">Vendedor</th>
+        <th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:right">Meta Jul</th>
+        <th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:right">Meta Ago</th>
+        <th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:right">Meta Sep</th>
+        <th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:right">Total Q3</th>
+        <th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:right">Var %</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr style="background:#f3f4f6;font-weight:700">
+        <td style="padding:10px 12px;font-size:13px;color:#111827">TOTAL EQUIPO</td>
+        <td style="padding:10px 12px;font-size:13px;text-align:right;color:#064e3b">${fm(teamJul)}</td>
+        <td style="padding:10px 12px;font-size:13px;text-align:right;color:#064e3b">${fm(teamAgo)}</td>
+        <td style="padding:10px 12px;font-size:13px;text-align:right;color:#064e3b">${fm(teamSep)}</td>
+        <td style="padding:10px 12px;font-size:13px;text-align:right;font-weight:700;color:#0f766e">${fm(teamTotal)}</td>
+        <td style="padding:10px 12px;font-size:13px;text-align:right;color:${vc(teamVar)}">${fp(teamVar)}</td>
+      </tfoot>
+    </table>
+  </td></tr>
+  <tr><td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb">
+    <div style="font-size:12px;color:#9ca3af;line-height:1.6">
+      Correo generado por <strong>Forecast COFERSA</strong> — Metas basadas en tendencia histórica + estacionalidad Q3 2024–2025.<br>
+      Consultas: <a href="mailto:jgarcia@cofersa.cr" style="color:#1e40af">jgarcia@cofersa.cr</a>
+    </div>
+  </td></tr>
+</table></body></html>`;
 }
 
 function closeEmailModal() { document.getElementById('emailModal').style.display = 'none'; }
@@ -2993,7 +3144,13 @@ function renderEmailList(list) {
 }
 
 function selectAllEmails(check) { document.querySelectorAll('.email-cb').forEach(cb => cb.checked = check); updateEmailCount(); }
-function filterEmailList(q) { renderEmailList(_emailVendorData.filter(v => !q || v.label.toLowerCase().includes(q.toLowerCase()) || v.correo.toLowerCase().includes(q.toLowerCase()))); }
+function filterEmailList(q) {
+  if (_emailMode === 'supervisores') {
+    renderSupervisorList(_emailSuperData.filter(s => !q || s.label.toLowerCase().includes(q.toLowerCase())));
+  } else {
+    renderEmailList(_emailVendorData.filter(v => !q || v.label.toLowerCase().includes(q.toLowerCase()) || v.correo.toLowerCase().includes(q.toLowerCase())));
+  }
+}
 function updateEmailCount() { const n=document.querySelectorAll('.email-cb:checked').length; document.getElementById('emailSelectedCount').textContent=`${n} vendedor${n!==1?'es':''} seleccionado${n!==1?'s':''}`; }
 
 function buildEmailHTML(vendedor, totals, clientes) {
@@ -3077,16 +3234,26 @@ async function loadVCMEmailData() {
 
 async function previewEmail() {
   const checked=[...document.querySelectorAll('.email-cb:checked')];
-  if(!checked.length){alert('Seleccioná al menos un vendedor.');return;}
-  document.getElementById('emailStatus').textContent='⏳ Cargando datos para vista previa...';
-  const vcmData=await loadVCMEmailData();
+  if(!checked.length){alert('Seleccioná al menos uno.');return;}
+  document.getElementById('emailStatus').textContent='⏳ Preparando vista previa...';
+
   _previewList=[];
-  const vendProj = computeVendProjections();
-  for(const cb of checked.slice(0,5)){
-    const v=_emailVendorData[parseInt(cb.dataset.idx)];
-    if(!v)continue;
-    const{clientes,totals}=await buildVCMPayload(vcmData,v.vendedor, vendProj[v.vendedor]);
-    _previewList.push({v,html:buildEmailHTML(v.vendedor,totals,clientes)});
+  if (_emailMode === 'supervisores') {
+    // Supervisor preview — no VCM needed
+    checked.slice(0,5).forEach(cb => {
+      const s = _emailSuperData[parseInt(cb.dataset.idx)];
+      if (!s) return;
+      _previewList.push({ v: { label: s.label, correo: s.correo, correo_supervisor: s.correo }, html: buildSupervisorEmailHTML(s.label, s.vendedores) });
+    });
+  } else {
+    const vcmData=await loadVCMEmailData();
+    const vendProj=computeVendProjections();
+    for(const cb of checked.slice(0,5)){
+      const v=_emailVendorData[parseInt(cb.dataset.idx)];
+      if(!v)continue;
+      const{clientes,totals}=await buildVCMPayload(vcmData,v.vendedor,vendProj[v.vendedor]);
+      _previewList.push({v,html:buildEmailHTML(v.vendedor,totals,clientes)});
+    }
   }
   _previewIdx=0;renderPreview();
   document.getElementById('emailPreviewModal').style.display='flex';
@@ -3109,16 +3276,26 @@ async function sendEmails(){
   if(!checked.length){alert('Seleccioná al menos un vendedor.');return;}
   const btn=document.getElementById('sendEmailBtn');
   btn.disabled=true;btn.textContent='⏳ Preparando...';
-  document.getElementById('emailStatus').textContent='⏳ Cargando datos VCM...';
+  document.getElementById('emailStatus').textContent='⏳ Preparando correos...';
   try{
-    const vcmData=await loadVCMEmailData();
     const vendedores=[];
     const vendProj = computeVendProjections();
-    for(const cb of checked){
-      const v=_emailVendorData[parseInt(cb.dataset.idx)];
-      if(!v)continue;
-      const{clientes,totals}=await buildVCMPayload(vcmData,v.vendedor, vendProj[v.vendedor]);
-      vendedores.push({vendedor:v.vendedor,correo:v.correo,correo_supervisor:v.correo_supervisor,clientes,totals});
+    if (_emailMode === 'supervisores') {
+      checked.forEach(cb => {
+        const s = _emailSuperData[parseInt(cb.dataset.idx)];
+        if (!s) return;
+        const html = buildSupervisorEmailHTML(s.label, s.vendedores);
+        vendedores.push({ vendedor: s.label, correo: s.correo, correo_supervisor: s.correo, html_override: html });
+      });
+    } else {
+      document.getElementById('emailStatus').textContent='⏳ Cargando datos VCM...';
+      const vcmData=await loadVCMEmailData();
+      for(const cb of checked){
+        const v=_emailVendorData[parseInt(cb.dataset.idx)];
+        if(!v)continue;
+        const{clientes,totals}=await buildVCMPayload(vcmData,v.vendedor,vendProj[v.vendedor]);
+        vendedores.push({vendedor:v.vendedor,correo:v.correo,correo_supervisor:v.correo_supervisor,clientes,totals});
+      }
     }
     const testMode = document.getElementById('testModeToggle')?.checked;
     const testEmail = 'jgarcia@cofersa.cr';
