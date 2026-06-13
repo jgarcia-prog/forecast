@@ -1801,7 +1801,7 @@ function renderVendTable(vendProj) {
     const portColor = PORT_COLORS_VT[port] || 'var(--text3)';
     const portBadge = port
       ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:${portColor};background:${portColor}18;padding:2px 7px;border-radius:4px;border:1px solid ${portColor}40">${port}</span>`
-      : '<span style="font-size:10px;color:var(--text3)">—</span>';
+      : `<span style="display:inline-flex;align-items:center;font-size:10px;font-weight:600;color:#1a1a1a;background:#fff;padding:2px 7px;border-radius:4px;border:1px solid #ccc">Portafolio 0</span>`;
     return `<tr>
       <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${x.v.replace(/^\d+-/,'').trim()}</td>
       <td>${portBadge}</td>
