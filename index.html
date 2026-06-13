@@ -3012,10 +3012,35 @@ function buildEmailHTML(vendedor, totals, clientes) {
     }).join('');
     return `<tr><td colspan="4" style="padding:0"><table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr style="background:#eff6ff"><td style="padding:9px 12px;font-size:13px;font-weight:600;color:#1e40af;border-bottom:1px solid #dbeafe">\ud83c\udfaa ${c.nombre||c.alias}${c.alias&&c.nombre&&c.alias!==c.nombre?`<span style="font-size:11px;font-weight:400;color:#6b7280;margin-left:6px">\u21b3 ${c.alias}</span>`:''}</td><td style="padding:9px 12px;font-size:13px;text-align:right;color:#6b7280;border-bottom:1px solid #dbeafe">${fm(c.hist_q3_2025)}</td><td style="padding:9px 12px;font-size:13px;font-weight:700;text-align:right;color:#0f766e;border-bottom:1px solid #dbeafe">${fm(c.meta_q3)}</td><td style="padding:9px 12px;font-size:13px;text-align:right;color:${vc(cv)};border-bottom:1px solid #dbeafe">${fp(cv)}</td></tr>${mr}</table></td></tr>`;
   }).join('');
-  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif"><table width="100%" cellpadding="0" cellspacing="0" style="max-width:700px;margin:24px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)"><tr><td style="background:linear-gradient(135deg,#1e3a8a 0%,#1e40af 100%);padding:28px 32px"><div style="color:#fff;font-size:22px;font-weight:700">COFERSA</div><div style="color:#bfdbfe;font-size:14px;margin-top:4px">Metas de Ventas \u2014 Q3 2026</div></td></tr><tr><td style="padding:28px 32px 16px"><div style="font-size:16px;color:#111827;font-weight:600">Estimado/a ${nm},</div><div style="font-size:14px;color:#6b7280;margin-top:8px;line-height:1.6">A continuaci\u00f3n encontr\u00e1s las metas de ventas proyectadas para el tercer trimestre 2026 (Julio, Agosto y Septiembre), desglosadas por cliente y marca.</div></td></tr><tr><td style="padding:0 32px 24px"><table width="100%" cellpadding="0" cellspacing="0" style="border-radius:10px;overflow:hidden;border:1px solid #e5e7eb"><tr style="background:#f0fdf4"><td style="padding:16px 20px"><div style="font-size:11px;font-weight:700;color:#059669;letter-spacing:0.8px;text-transform:uppercase">Meta Total Q3 2026</div><div style="font-size:26px;font-weight:800;color:#064e3b;margin-top:4px">${fm(totals.meta_q3)}</div><div style="font-size:12px;color:#6b7280;margin-top:2px">Jul + Ago + Sep 2026</div></td><td style="padding:16px 20px;text-align:right;border-left:1px solid #d1fae5"><div style="font-size:11px;font-weight:700;color:#6b7280;letter-spacing:0.8px;text-transform:uppercase">Q3 2025 Real</div><div style="font-size:20px;font-weight:700;color:#374151;margin-top:4px">${fm(totals.hist_q3_2025)}</div><div style="font-size:14px;font-weight:700;color:${vc(vt)};margin-top:4px">${fp(vt)}</div></td></tr></table></td></tr><tr><td style="padding:0 32px 32px"><div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">Desglose por Cliente y Marca</div><table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #e5e7eb"><thead><tr style="background:#1e3a8a"><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#bfdbfe;text-align:left">Cliente / Marca</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#bfdbfe;text-align:right">Q3 2025</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#bfdbfe;text-align:right">Meta Q3 2026</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#bfdbfe;text-align:right">Var %</th></tr></thead><tbody>${rows}</tbody></table></td></tr><tr><td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb"><div style="font-size:12px;color:#9ca3af;line-height:1.6">Correo generado por <strong>Forecast COFERSA</strong> \u2014 Metas basadas en tendencia hist\u00f3rica + estacionalidad Q3 2024\u20132025.<br>Consultas: <a href="mailto:jgarcia@cofersa.cr" style="color:#1e40af">jgarcia@cofersa.cr</a></div></td></tr></table></body></html>`;
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif"><table width="100%" cellpadding="0" cellspacing="0" style="max-width:700px;margin:24px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)"><tr><td style="background:linear-gradient(135deg,#1e3a8a 0%,#1e40af 100%);padding:28px 32px"><div style="color:#fff;font-size:22px;font-weight:700">COFERSA</div><div style="color:#bfdbfe;font-size:14px;margin-top:4px">Metas de Ventas \u2014 Q3 2026</div></td></tr><tr><td style="padding:28px 32px 16px"><div style="font-size:16px;color:#111827;font-weight:600">Estimado/a ${nm},</div><div style="font-size:14px;color:#6b7280;margin-top:8px;line-height:1.6">A continuaci\u00f3n encontr\u00e1s las metas de ventas proyectadas para el tercer trimestre 2026, desglosadas por mes, cliente y marca.</div></td></tr><tr><td style="padding:0 32px 24px">
+<table width="100%" cellpadding="0" cellspacing="0" style="border-radius:10px;overflow:hidden;border:1px solid #e5e7eb">
+  <tr style="background:#f0fdf4">
+    <td colspan="2" style="padding:16px 20px 10px">
+      <div style="font-size:11px;font-weight:700;color:#059669;letter-spacing:0.8px;text-transform:uppercase">Meta Total Q3 2026</div>
+      <div style="font-size:26px;font-weight:800;color:#064e3b;margin-top:4px">${fm(totals.meta_q3)}</div>
+    </td>
+    <td style="padding:16px 20px 10px;text-align:right;border-left:1px solid #d1fae5">
+      <div style="font-size:11px;font-weight:700;color:#6b7280;letter-spacing:0.8px;text-transform:uppercase">Q3 2025 Real</div>
+      <div style="font-size:20px;font-weight:700;color:#374151;margin-top:4px">${fm(totals.hist_q3_2025)}</div>
+      <div style="font-size:14px;font-weight:700;color:${vc(vt)};margin-top:4px">${fp(vt)}</div>
+    </td>
+  </tr>
+  <tr style="background:#f0fdf4;border-top:1px solid #d1fae5">
+    ${['Jul 2026','Ago 2026','Sep 2026'].map((mes,i)=>{
+      const v=[totals.meta_jul,totals.meta_ago,totals.meta_sep][i]||0;
+      const pct=totals.meta_q3>0?(v/totals.meta_q3*100).toFixed(1):'0.0';
+      return `<td style="padding:10px 20px;text-align:center;${i>0?'border-left:1px solid #d1fae5':''}">
+        <div style="font-size:10px;font-weight:700;color:#6b7280;letter-spacing:0.5px">${mes}</div>
+        <div style="font-size:15px;font-weight:700;color:#064e3b;margin-top:3px">${fm(v)}</div>
+        <div style="font-size:10px;color:#9ca3af;margin-top:1px">${pct}%</div>
+      </td>`;
+    }).join('')}
+  </tr>
+</table>
+</td></tr><tr><td style="padding:0 32px 32px"><div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">Desglose por Cliente y Marca</div><table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #e5e7eb"><thead><tr style="background:#1e3a8a"><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#bfdbfe;text-align:left">Cliente / Marca</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#bfdbfe;text-align:right">Q3 2025</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#bfdbfe;text-align:right">Meta Q3 2026</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#bfdbfe;text-align:right">Var %</th></tr></thead><tbody>${rows}</tbody></table></td></tr><tr><td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb"><div style="font-size:12px;color:#9ca3af;line-height:1.6">Correo generado por <strong>Forecast COFERSA</strong> \u2014 Metas basadas en tendencia hist\u00f3rica + estacionalidad Q3 2024\u20132025.<br>Consultas: <a href="mailto:jgarcia@cofersa.cr" style="color:#1e40af">jgarcia@cofersa.cr</a></div></td></tr></table></body></html>`;
 }
 
-async function buildVCMPayload(vcmData, vendedor) {
+async function buildVCMPayload(vcmData, vendedor, vendProjData) {
   const byAlias = {};
   vcmData.filter(r=>r.vendedor===vendedor).forEach(r=>{
     if(!byAlias[r.alias])byAlias[r.alias]={alias:r.alias,nombre:r.cliente_nombre,marcas:[],hist_q3_2025:0,hist_q3_2024:0,meta_q3:0};
@@ -3025,7 +3050,16 @@ async function buildVCMPayload(vcmData, vendedor) {
     byAlias[r.alias].marcas.push({marca:r.marca,portafolio:r.portafolio,hist_q3_2025:Number(r.hist_q3_2025)||0,hist_q3_2024:Number(r.hist_q3_2024)||0,meta_q3:Number(r.meta_q3)||0});
   });
   const clientes=Object.values(byAlias).filter(c=>c.meta_q3>10000);
-  const totals={hist_q3_2025:clientes.reduce((s,c)=>s+c.hist_q3_2025,0),hist_q3_2024:clientes.reduce((s,c)=>s+c.hist_q3_2024,0),meta_q3:clientes.reduce((s,c)=>s+c.meta_q3,0)};
+  // Monthly breakdown from the model projection (more accurate than VCM average)
+  const proj = vendProjData?.proj || [0,0,0];
+  const totals={
+    hist_q3_2025: clientes.reduce((s,c)=>s+c.hist_q3_2025,0),
+    hist_q3_2024: clientes.reduce((s,c)=>s+c.hist_q3_2024,0),
+    meta_q3: proj.reduce((a,b)=>a+b,0) || clientes.reduce((s,c)=>s+c.meta_q3,0),
+    meta_jul: proj[0],
+    meta_ago: proj[1],
+    meta_sep: proj[2]
+  };
   return {clientes,totals};
 }
 
@@ -3042,10 +3076,11 @@ async function previewEmail() {
   document.getElementById('emailStatus').textContent='⏳ Cargando datos para vista previa...';
   const vcmData=await loadVCMEmailData();
   _previewList=[];
+  const vendProj = computeVendProjections();
   for(const cb of checked.slice(0,5)){
     const v=_emailVendorData[parseInt(cb.dataset.idx)];
     if(!v)continue;
-    const{clientes,totals}=await buildVCMPayload(vcmData,v.vendedor);
+    const{clientes,totals}=await buildVCMPayload(vcmData,v.vendedor, vendProj[v.vendedor]);
     _previewList.push({v,html:buildEmailHTML(v.vendedor,totals,clientes)});
   }
   _previewIdx=0;renderPreview();
@@ -3073,10 +3108,11 @@ async function sendEmails(){
   try{
     const vcmData=await loadVCMEmailData();
     const vendedores=[];
+    const vendProj = computeVendProjections();
     for(const cb of checked){
       const v=_emailVendorData[parseInt(cb.dataset.idx)];
       if(!v)continue;
-      const{clientes,totals}=await buildVCMPayload(vcmData,v.vendedor);
+      const{clientes,totals}=await buildVCMPayload(vcmData,v.vendedor, vendProj[v.vendedor]);
       vendedores.push({vendedor:v.vendedor,correo:v.correo,correo_supervisor:v.correo_supervisor,clientes,totals});
     }
     const testMode = document.getElementById('testModeToggle')?.checked;
