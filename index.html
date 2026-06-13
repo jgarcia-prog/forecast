@@ -629,6 +629,7 @@ body {
   <div class="tab" onclick="switchTab(7)">📐 Metodología</div>
   <div class="tab" onclick="switchTab(8)">🏷️👤 Vend-Marca</div>
   <div class="tab" onclick="switchTab(9)">🏪👤 Vend-Cliente</div>
+  <div class="tab" onclick="switchTab(10)">🏪👤🏷️ Vend-Cliente-Marca</div>
 </div>
 
 <div class="main">
@@ -1133,6 +1134,39 @@ body {
     </div>
   </div>
 </div>
+<!-- TAB 10: VENDEDOR × CLIENTE × MARCA -->
+<div class="panel-section" id="tab10">
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Vista Zona × Cliente × Marca — Proyección Q2 2026</div>
+        <div class="card-sub">Expandí un vendedor → expandí un cliente → ver marcas con historial y meta · Requiere datos Supabase</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-outline" onclick="expandAll('vcmBody')" style="font-size:12px;padding:5px 12px">↕ Expandir todo</button>
+        <button class="btn btn-outline" onclick="collapseAll('vcmBody')" style="font-size:12px;padding:5px 12px">↕ Colapsar todo</button>
+        <input type="text" class="search-input" placeholder="🔍 Buscar..." id="searchVCM" oninput="filterTable('vcmBody', this.value)">
+      </div>
+    </div>
+    <div class="table-wrap" style="max-height:700px">
+      <table class="data-table" id="vcmTable">
+        <thead>
+          <tr>
+            <th style="min-width:300px">Zona / Cliente / Marca</th>
+            <th class="num">Hist Q2 2025 (¢)</th>
+            <th class="num">Meta Abr 2026 (¢)</th>
+            <th class="num">Meta May 2026 (¢)</th>
+            <th class="num">Meta Jun 2026 (¢)</th>
+            <th class="num">Total Meta Q2 (¢)</th>
+            <th class="num">Var % vs 2025</th>
+          </tr>
+        </thead>
+        <tbody id="vcmBody"></tbody>
+        <tfoot id="vcmFoot"></tfoot>
+      </table>
+    </div>
+  </div>
+</div>
 
 </div><!-- /main -->
 
@@ -1495,6 +1529,7 @@ function render() {
   renderVendPortTable(vendProj, portProj);
   renderVendMarcaTable(vendProj);
   renderVendClienteTable(vendProj, clientProj);
+  renderVCMTable(vendProj);
   renderClientTable(clientProj);
   renderAdjPanels();
 }
@@ -1909,6 +1944,173 @@ function renderPortChart(portProj) {
       }
     }
   });
+}
+
+// ==================== VEND-CLIENTE-MARCA (Tab 10) ====================
+const _vcmCache = {}; // cache: 'vendedor|alias' → marcas data
+
+function renderVCMTable(vendProj) {
+  const sorted = Object.entries(vendProj)
+    .map(([v, d]) => ({ v, ...d, total: d.proj.reduce((a,b)=>a+b,0) }))
+    .sort((a,b) => b.total - a.total);
+
+  const grandTotal  = sorted.reduce((s,x)=>s+x.total,0);
+  const grandH25    = sorted.reduce((s,x)=>s+x.histQ2_2025,0);
+  const grandVar    = grandH25>0?((grandTotal-grandH25)/grandH25*100):0;
+  const hasSupabase = RAW_DATA.vendedorPortafolio && Object.keys(RAW_DATA.vendedorPortafolio).length > 0;
+
+  let html = '';
+  sorted.forEach((x, vidx) => {
+    const label  = x.v.replace(/^\d+-/,'').replace(/\.\./g,'.').trim();
+    const varPct = x.histQ2_2025>0?((x.total-x.histQ2_2025)/x.histQ2_2025*100):0;
+
+    html += `<tr class="vp-vendor-row" onclick="toggleVCMVendedor(${vidx})">
+      <td><span class="vp-toggle" id="vcmvtog_${vidx}">+</span><strong>${label}</strong></td>
+      <td class="num">${fmt(x.histQ2_2025)}</td>
+      <td class="num"></td><td class="num"></td><td class="num"></td>
+      <td class="num" style="color:var(--teal);font-weight:700">${fmt(x.total)}</td>
+      <td class="num ${varPct>=0?'pos':'neg'}">${fmtPct(varPct)}</td>
+    </tr>`;
+
+    // Get clients for this vendor
+    const vendClients = RAW_DATA.vendedorClientes?.[x.v] || {};
+    const clientsSorted = Object.entries(vendClients)
+      .sort((a,b)=>(b[1].histQ2_2025||0)-(a[1].histQ2_2025||0));
+
+    if (!hasSupabase) {
+      html += `<tr class="vp-port-row p2 hidden" data-vcm-vend="${vidx}">
+        <td colspan="7" style="padding-left:28px;color:var(--text3);font-style:italic">Cargá datos desde ⚡ Supabase para ver las marcas</td>
+      </tr>`;
+    } else if (clientsSorted.length === 0) {
+      html += `<tr class="vp-port-row p2 hidden" data-vcm-vend="${vidx}">
+        <td colspan="7" style="padding-left:28px;color:var(--text3);font-style:italic">Sin clientes registrados</td>
+      </tr>`;
+    } else {
+      const vendClientTotal = clientsSorted.reduce((s,[,d])=>s+(d.histQ2_2025||0),0)||1;
+      clientsSorted.forEach(([alias, cd], cidx) => {
+        const share   = (cd.histQ2_2025||0)/vendClientTotal;
+        const cAbr    = x.proj[0]*share, cMay=x.proj[1]*share, cJun=x.proj[2]*share;
+        const cTot    = cAbr+cMay+cJun;
+        const cH25    = cd.histQ2_2025||0;
+        const cVar    = cH25>0?((cTot-cH25)/cH25*100):0;
+        const rowId   = `vcm_${vidx}_${cidx}`;
+
+        html += `<tr class="vp-port-row p2 hidden" data-vcm-vend="${vidx}" onclick="toggleVCMCliente('${rowId}','${x.v.replace(/'/g,"\\'")}','${alias.replace(/'/g,"\\'")}')">
+          <td style="padding-left:28px"><span class="vp-toggle" id="${rowId}_tog">+</span>🏪 ${alias}</td>
+          <td class="num">${fmt(cH25)}</td>
+          <td class="num">${fmt(cAbr)}</td><td class="num">${fmt(cMay)}</td><td class="num">${fmt(cJun)}</td>
+          <td class="num" style="font-weight:600">${fmt(cTot)}</td>
+          <td class="num ${cVar>=0?'pos':'neg'}">${fmtPct(cVar)}</td>
+        </tr>
+        <tr class="hidden" id="${rowId}_marcas">
+          <td colspan="7" style="padding:0">
+            <div id="${rowId}_content" style="padding:6px 28px 6px 52px;background:var(--bg3)">
+              <span style="color:var(--text3);font-size:12px">Cargando marcas...</span>
+            </div>
+          </td>
+        </tr>`;
+      });
+    }
+  });
+
+  document.getElementById('vcmBody').innerHTML = html;
+  document.getElementById('vcmFoot').innerHTML = `<tr class="total-row">
+    <td><strong>TOTAL GENERAL</strong></td>
+    <td class="num"><strong>${fmt(grandH25)}</strong></td>
+    <td class="num"><strong>${fmt(sorted.reduce((s,x)=>s+x.proj[0],0))}</strong></td>
+    <td class="num"><strong>${fmt(sorted.reduce((s,x)=>s+x.proj[1],0))}</strong></td>
+    <td class="num"><strong>${fmt(sorted.reduce((s,x)=>s+x.proj[2],0))}</strong></td>
+    <td class="num" style="color:var(--teal)"><strong>${fmt(grandTotal)}</strong></td>
+    <td class="num ${grandVar>=0?'pos':'neg'}"><strong>${fmtPct(grandVar)}</strong></td>
+  </tr>`;
+}
+
+function toggleVCMVendedor(vidx) {
+  const rows = document.querySelectorAll(`#vcmBody tr[data-vcm-vend="${vidx}"]`);
+  const tog  = document.getElementById(`vcmvtog_${vidx}`);
+  const isOpen = tog?.textContent === '−';
+  rows.forEach(r => r.classList.toggle('hidden', isOpen));
+  if (tog) tog.textContent = isOpen ? '+' : '−';
+  // Also collapse all client marca rows when closing vendor
+  if (isOpen) {
+    rows.forEach(r => {
+      const rowId = r.getAttribute('onclick')?.match(/'(vcm_\d+_\d+)'/)?.[1];
+      if (rowId) collapseVCMCliente(rowId);
+    });
+  }
+}
+
+function collapseVCMCliente(rowId) {
+  const marcaRow = document.getElementById(`${rowId}_marcas`);
+  if (marcaRow) marcaRow.classList.add('hidden');
+  const tog = document.getElementById(`${rowId}_tog`);
+  if (tog) tog.textContent = '+';
+}
+
+async function toggleVCMCliente(rowId, vendedor, alias) {
+  const marcaRow = document.getElementById(`${rowId}_marcas`);
+  const tog      = document.getElementById(`${rowId}_tog`);
+  if (!marcaRow) return;
+
+  const isOpen = !marcaRow.classList.contains('hidden');
+  if (isOpen) {
+    marcaRow.classList.add('hidden');
+    if (tog) tog.textContent = '+';
+    return;
+  }
+
+  marcaRow.classList.remove('hidden');
+  if (tog) tog.textContent = '−';
+
+  // Use cache or fetch
+  const cacheKey = `${vendedor}|${alias}`;
+  if (!_vcmCache[cacheKey]) {
+    const content = document.getElementById(`${rowId}_content`);
+    if (content) content.innerHTML = '<span style="color:var(--text3);font-size:12px">⏳ Cargando marcas...</span>';
+    try {
+      const res = await fetch(`${SUPA_URL}/rest/v1/rpc/get_cliente_marcas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` },
+        body: JSON.stringify({ p_vendedor: vendedor, p_alias: alias })
+      });
+      _vcmCache[cacheKey] = await res.json();
+    } catch(e) {
+      document.getElementById(`${rowId}_content`).innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`;
+      return;
+    }
+  }
+
+  const marcas = _vcmCache[cacheKey];
+  const PORT_COLORS_MAP = { 'Portafolio 1': '#dc2626', 'Portafolio 2': '#06b6d4', 'Portafolio 3': '#1e3a8a' };
+
+  if (!marcas || marcas.length === 0) {
+    document.getElementById(`${rowId}_content`).innerHTML =
+      '<span style="color:var(--text3);font-size:12px;font-style:italic">Sin marcas con ventas en el período</span>';
+    return;
+  }
+
+  const table = marcas.map(m => {
+    const h25  = Number(m.hist_q2_2025)||0;
+    const tot  = Number(m.meta_q2)||0;
+    const varP = h25>0?((tot-h25)/h25*100):0;
+    const pColor = PORT_COLORS_MAP[m.portafolio] || 'var(--text3)';
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:5px 8px;font-size:12px">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${pColor};margin-right:6px;flex-shrink:0"></span>
+        🏷️ ${m.marca}
+        <span style="font-size:10px;color:var(--text3);margin-left:4px">${m.portafolio}</span>
+      </td>
+      <td style="text-align:right;padding:5px 8px;font-size:12px">${fmt(h25)}</td>
+      <td style="text-align:right;padding:5px 8px;font-size:12px">${fmt(Number(m.m21)||0)}</td>
+      <td style="text-align:right;padding:5px 8px;font-size:12px">${fmt(Number(m.m22)||0)}</td>
+      <td style="text-align:right;padding:5px 8px;font-size:12px">${fmt(Number(m.m23)||0)}</td>
+      <td style="text-align:right;padding:5px 8px;font-size:12px;font-weight:600">${fmt(tot)}</td>
+      <td style="text-align:right;padding:5px 8px;font-size:12px" class="${varP>=0?'pos':'neg'}">${fmtPct(varP)}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById(`${rowId}_content`).innerHTML =
+    `<table style="width:100%;border-collapse:collapse"><tbody>${table}</tbody></table>`;
 }
 
 function renderVendMarcaTable(vendProj) {
