@@ -1993,7 +1993,7 @@ const _vcmCache = {}; // cache: 'vendedor|alias' → marcas data
 function renderVCMTable(vendProj) {
   const sorted = Object.entries(vendProj)
     .map(([v, d]) => ({ v, ...d, total: d.proj.reduce((a,b)=>a+b,0) }))
-    .sort((a,b) => b.total - a.total);
+    .sort((a,b) => a.v.replace(/^\d+-/,'').trim().localeCompare(b.v.replace(/^\d+-/,'').trim(), 'es'));
 
   const grandTotal  = sorted.reduce((s,x)=>s+x.total,0);
   const grandH25    = sorted.reduce((s,x)=>s+x.histQ2_2025,0);
@@ -2168,7 +2168,7 @@ async function toggleVCMCliente(rowId, vendedor, alias) {
 function renderVendMarcaTable(vendProj) {
   const sorted = Object.entries(vendProj)
     .map(([v, d]) => ({ v, ...d, total: d.proj.reduce((a,b)=>a+b,0) }))
-    .sort((a,b) => b.total - a.total);
+    .sort((a,b) => a.v.replace(/^\d+-/,'').trim().localeCompare(b.v.replace(/^\d+-/,'').trim(), 'es'));
 
   const grandTotal = sorted.reduce((s,x)=>s+x.total,0);
   const grandH25   = sorted.reduce((s,x)=>s+x.histQ2_2025,0);
@@ -2258,7 +2258,7 @@ function renderVendMarcaTable(vendProj) {
 function renderVendClienteTable(vendProj, clientProj) {
   const sorted = Object.entries(vendProj)
     .map(([v, d]) => ({ v, ...d, total: d.proj.reduce((a,b)=>a+b,0) }))
-    .sort((a,b) => b.total - a.total);
+    .sort((a,b) => a.v.replace(/^\d+-/,'').trim().localeCompare(b.v.replace(/^\d+-/,'').trim(), 'es'));
 
   const grandTotal = sorted.reduce((s,x)=>s+x.total,0);
   const grandH25   = sorted.reduce((s,x)=>s+x.histQ2_2025,0);
