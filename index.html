@@ -513,6 +513,7 @@ body {
     <button class="btn btn-ai" onclick="openAIAnalysis()">🤖 Análisis AI</button>
     <button class="btn btn-gold" onclick="exportExcel()">↓ Exportar Excel</button>
     <button class="btn btn-save" id="saveBtn" onclick="saveState()" title="Guardar estado actual">💾 Guardar</button>
+    <button class="btn btn-outline" onclick="openEmailModal()" style="border-color:#7c3aed;color:#7c3aed" title="Enviar metas por correo a vendedores">📧 Enviar Metas</button>
     <span id="saveIndicator" style="display:none;font-size:11px;color:var(--text3);margin-left:2px"></span>
   </div>
 </div>
@@ -1175,6 +1176,55 @@ body {
         <tbody id="vcmBody"></tbody>
         <tfoot id="vcmFoot"></tfoot>
       </table>
+    </div>
+  </div>
+</div>
+<!-- ==================== EMAIL MODAL ==================== -->
+<div id="emailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border-radius:16px;width:860px;max-width:95vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,0.4)">
+    <!-- Header -->
+    <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-size:17px;font-weight:700;color:var(--text)">📧 Enviar Metas Q3 2026</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:2px">Correo individual a cada vendedor con copia al supervisor</div>
+      </div>
+      <button onclick="closeEmailModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text2)">✕</button>
+    </div>
+    <!-- Controls -->
+    <div style="padding:16px 24px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-outline" onclick="selectAllEmails(true)" style="font-size:12px;padding:5px 12px">☑ Todos</button>
+      <button class="btn btn-outline" onclick="selectAllEmails(false)" style="font-size:12px;padding:5px 12px">☐ Ninguno</button>
+      <input type="text" id="emailSearch" placeholder="🔍 Filtrar vendedor..." oninput="filterEmailList(this.value)" style="font-size:12px;padding:5px 10px;width:200px">
+      <span id="emailSelectedCount" style="font-size:12px;color:var(--text3)"></span>
+      <div style="margin-left:auto;display:flex;gap:8px">
+        <button class="btn btn-outline" onclick="previewEmail()" style="font-size:12px;padding:5px 14px;border-color:#7c3aed;color:#7c3aed">👁 Vista previa</button>
+        <button class="btn btn-save" id="sendEmailBtn" onclick="sendEmails()" style="font-size:12px;padding:5px 14px;background:#7c3aed!important;border-color:#7c3aed!important">📤 Enviar seleccionados</button>
+      </div>
+    </div>
+    <!-- Vendor list -->
+    <div style="overflow-y:auto;flex:1;padding:16px 24px">
+      <div id="emailVendorList" style="display:grid;gap:8px"></div>
+    </div>
+    <!-- Status -->
+    <div id="emailStatus" style="padding:12px 24px;border-top:1px solid var(--border);font-size:13px;color:var(--text3);min-height:42px"></div>
+  </div>
+</div>
+
+<!-- EMAIL PREVIEW MODAL -->
+<div id="emailPreviewModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:10000;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;width:740px;max-width:95vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column">
+    <div style="padding:14px 20px;background:#1e3a8a;display:flex;align-items:center;justify-content:space-between">
+      <span style="color:#fff;font-weight:600;font-size:14px">Vista previa del correo</span>
+      <div style="display:flex;gap:8px">
+        <button id="prevVendBtn" onclick="changePreview(-1)" style="background:rgba(255,255,255,0.2);border:none;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer">◀</button>
+        <span id="previewVendIdx" style="color:#bfdbfe;font-size:12px;align-self:center"></span>
+        <button id="nextVendBtn" onclick="changePreview(1)" style="background:rgba(255,255,255,0.2);border:none;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer">▶</button>
+        <button onclick="closePreview()" style="background:none;border:none;color:#fff;font-size:18px;cursor:pointer;margin-left:8px">✕</button>
+      </div>
+    </div>
+    <div style="padding:10px 20px;background:#f3f4f6;font-size:12px;color:#374151;border-bottom:1px solid #e5e7eb" id="previewEmailHeader"></div>
+    <div style="overflow-y:auto;flex:1">
+      <iframe id="emailPreviewFrame" style="width:100%;height:600px;border:none"></iframe>
     </div>
   </div>
 </div>
@@ -2893,6 +2943,155 @@ function switchTab(idx) {
     t.classList.toggle('active', match && parseInt(match[1]) === idx);
   });
   setTimeout(render, 50);
+}
+
+// ==================== EMAIL METAS ====================
+const EDGE_URL = `${SUPA_URL}/functions/v1/send-meta-email`;
+let _emailVendorData = [];
+let _previewList = [];
+let _previewIdx = 0;
+
+async function openEmailModal() {
+  document.getElementById('emailModal').style.display = 'flex';
+  document.getElementById('emailVendorList').innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3)">⏳ Cargando vendedores...</div>';
+  document.getElementById('emailStatus').textContent = '';
+  try {
+    const res = await fetch(`${SUPA_URL}/rest/v1/rpc/get_vendedores_emails`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }, body: '{}'
+    });
+    const rows = await res.json();
+    _emailVendorData = rows.map(r => ({
+      vendedor: r.vendedor_secundario,
+      label: r.vendedor_secundario.replace(/^\d+-/, '').trim(),
+      correo: r.correo_vendedor, correo_supervisor: r.correo_supervisor,
+      supervisor: r.supervisor?.replace(/^\d+-/, '').trim() || '',
+      portafolio: r.portafolio || 'Portafolio 0'
+    }));
+    renderEmailList(_emailVendorData);
+  } catch(e) {
+    document.getElementById('emailVendorList').innerHTML = `<div style="color:var(--red)">${e.message}</div>`;
+  }
+}
+
+function closeEmailModal() { document.getElementById('emailModal').style.display = 'none'; }
+
+function renderEmailList(list) {
+  const PC = { 'Portafolio 1':'#dc2626','Portafolio 2':'#06b6d4','Portafolio 3':'#1e3a8a' };
+  document.getElementById('emailVendorList').innerHTML = list.map((v,i) => {
+    const pc = PC[v.portafolio]||'#6b7280';
+    return `<label style="display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:var(--bg)">
+      <input type="checkbox" class="email-cb" data-idx="${i}" checked style="width:15px;height:15px;accent-color:#7c3aed" onchange="updateEmailCount()">
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:600;color:var(--text)">${v.label} <span style="font-size:10px;font-weight:600;color:${pc};background:${pc}18;padding:1px 6px;border-radius:4px;border:1px solid ${pc}40">${v.portafolio}</span></div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">✉️ ${v.correo} &nbsp;·&nbsp; 👤 ${v.supervisor} (${v.correo_supervisor})</div>
+      </div></label>`;
+  }).join('');
+  updateEmailCount();
+}
+
+function selectAllEmails(check) { document.querySelectorAll('.email-cb').forEach(cb => cb.checked = check); updateEmailCount(); }
+function filterEmailList(q) { renderEmailList(_emailVendorData.filter(v => !q || v.label.toLowerCase().includes(q.toLowerCase()) || v.correo.toLowerCase().includes(q.toLowerCase()))); }
+function updateEmailCount() { const n=document.querySelectorAll('.email-cb:checked').length; document.getElementById('emailSelectedCount').textContent=`${n} vendedor${n!==1?'es':''} seleccionado${n!==1?'s':''}`; }
+
+function buildEmailHTML(vendedor, totals, clientes) {
+  const PC = {'Portafolio 1':'#dc2626','Portafolio 2':'#0891b2','Portafolio 3':'#1e3a8a'};
+  const fm = n => '\u00a2' + Math.round(n).toLocaleString('es-CR');
+  const fp = n => (n>=0?'\u25b2 +':'\u25bc ')+Math.abs(n).toFixed(1)+'%';
+  const vc = v => v>=0?'#059669':'#dc2626';
+  const vt = totals.hist_q3_2025>0?((totals.meta_q3-totals.hist_q3_2025)/totals.hist_q3_2025)*100:0;
+  const nm = vendedor.replace(/^\d+-/,'').trim();
+  const rows = clientes.sort((a,b)=>b.meta_q3-a.meta_q3).map(c=>{
+    const cv=c.hist_q3_2025>0?((c.meta_q3-c.hist_q3_2025)/c.hist_q3_2025)*100:0;
+    const mr=(c.marcas||[]).sort((a,b)=>b.meta_q3-a.meta_q3).map(m=>{
+      const mv=m.hist_q3_2025>0?((m.meta_q3-m.hist_q3_2025)/m.hist_q3_2025)*100:0;
+      const pc=PC[m.portafolio]||'#6b7280';
+      return `<tr style="background:#f9fafb"><td style="padding:6px 8px 6px 28px;font-size:12px;color:#374151;border-bottom:1px solid #f3f4f6"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${pc};margin-right:6px;vertical-align:middle"></span>${m.marca}<span style="font-size:10px;color:#9ca3af;margin-left:4px">${m.portafolio}</span></td><td style="padding:6px 8px;font-size:12px;text-align:right;color:#6b7280;border-bottom:1px solid #f3f4f6">${fm(m.hist_q3_2025)}</td><td style="padding:6px 8px;font-size:12px;text-align:right;font-weight:600;color:#1e3a8a;border-bottom:1px solid #f3f4f6">${fm(m.meta_q3)}</td><td style="padding:6px 8px;font-size:12px;text-align:right;color:${vc(mv)};border-bottom:1px solid #f3f4f6">${fp(mv)}</td></tr>`;
+    }).join('');
+    return `<tr><td colspan="4" style="padding:0"><table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr style="background:#eff6ff"><td style="padding:9px 12px;font-size:13px;font-weight:600;color:#1e40af;border-bottom:1px solid #dbeafe">\ud83c\udfaa ${c.nombre||c.alias}${c.alias&&c.nombre&&c.alias!==c.nombre?`<span style="font-size:11px;font-weight:400;color:#6b7280;margin-left:6px">\u21b3 ${c.alias}</span>`:''}</td><td style="padding:9px 12px;font-size:13px;text-align:right;color:#6b7280;border-bottom:1px solid #dbeafe">${fm(c.hist_q3_2025)}</td><td style="padding:9px 12px;font-size:13px;font-weight:700;text-align:right;color:#0f766e;border-bottom:1px solid #dbeafe">${fm(c.meta_q3)}</td><td style="padding:9px 12px;font-size:13px;text-align:right;color:${vc(cv)};border-bottom:1px solid #dbeafe">${fp(cv)}</td></tr>${mr}</table></td></tr>`;
+  }).join('');
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif"><table width="100%" cellpadding="0" cellspacing="0" style="max-width:700px;margin:24px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)"><tr><td style="background:linear-gradient(135deg,#1e3a8a 0%,#1e40af 100%);padding:28px 32px"><div style="color:#fff;font-size:22px;font-weight:700">COFERSA</div><div style="color:#bfdbfe;font-size:14px;margin-top:4px">Metas de Ventas \u2014 Q3 2026</div></td></tr><tr><td style="padding:28px 32px 16px"><div style="font-size:16px;color:#111827;font-weight:600">Estimado/a ${nm},</div><div style="font-size:14px;color:#6b7280;margin-top:8px;line-height:1.6">A continuaci\u00f3n encontr\u00e1s las metas de ventas proyectadas para el tercer trimestre 2026 (Julio, Agosto y Septiembre), desglosadas por cliente y marca.</div></td></tr><tr><td style="padding:0 32px 24px"><table width="100%" cellpadding="0" cellspacing="0" style="border-radius:10px;overflow:hidden;border:1px solid #e5e7eb"><tr style="background:#f0fdf4"><td style="padding:16px 20px"><div style="font-size:11px;font-weight:700;color:#059669;letter-spacing:0.8px;text-transform:uppercase">Meta Total Q3 2026</div><div style="font-size:26px;font-weight:800;color:#064e3b;margin-top:4px">${fm(totals.meta_q3)}</div><div style="font-size:12px;color:#6b7280;margin-top:2px">Jul + Ago + Sep 2026</div></td><td style="padding:16px 20px;text-align:right;border-left:1px solid #d1fae5"><div style="font-size:11px;font-weight:700;color:#6b7280;letter-spacing:0.8px;text-transform:uppercase">Q3 2025 Real</div><div style="font-size:20px;font-weight:700;color:#374151;margin-top:4px">${fm(totals.hist_q3_2025)}</div><div style="font-size:14px;font-weight:700;color:${vc(vt)};margin-top:4px">${fp(vt)}</div></td></tr></table></td></tr><tr><td style="padding:0 32px 32px"><div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">Desglose por Cliente y Marca</div><table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #e5e7eb"><thead><tr style="background:#1e3a8a"><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#bfdbfe;text-align:left">Cliente / Marca</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#bfdbfe;text-align:right">Q3 2025</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#bfdbfe;text-align:right">Meta Q3 2026</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#bfdbfe;text-align:right">Var %</th></tr></thead><tbody>${rows}</tbody></table></td></tr><tr><td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb"><div style="font-size:12px;color:#9ca3af;line-height:1.6">Correo generado por <strong>Forecast COFERSA</strong> \u2014 Metas basadas en tendencia hist\u00f3rica + estacionalidad Q3 2024\u20132025.<br>Consultas: <a href="mailto:jgarcia@cofersa.cr" style="color:#1e40af">jgarcia@cofersa.cr</a></div></td></tr></table></body></html>`;
+}
+
+async function buildVCMPayload(vcmData, vendedor) {
+  const byAlias = {};
+  vcmData.filter(r=>r.vendedor===vendedor).forEach(r=>{
+    if(!byAlias[r.alias])byAlias[r.alias]={alias:r.alias,nombre:r.cliente_nombre,marcas:[],hist_q3_2025:0,hist_q3_2024:0,meta_q3:0};
+    byAlias[r.alias].hist_q3_2025+=Number(r.hist_q3_2025)||0;
+    byAlias[r.alias].hist_q3_2024+=Number(r.hist_q3_2024)||0;
+    byAlias[r.alias].meta_q3+=Number(r.meta_q3)||0;
+    byAlias[r.alias].marcas.push({marca:r.marca,portafolio:r.portafolio,hist_q3_2025:Number(r.hist_q3_2025)||0,hist_q3_2024:Number(r.hist_q3_2024)||0,meta_q3:Number(r.meta_q3)||0});
+  });
+  const clientes=Object.values(byAlias).filter(c=>c.meta_q3>10000);
+  const totals={hist_q3_2025:clientes.reduce((s,c)=>s+c.hist_q3_2025,0),hist_q3_2024:clientes.reduce((s,c)=>s+c.hist_q3_2024,0),meta_q3:clientes.reduce((s,c)=>s+c.meta_q3,0)};
+  return {clientes,totals};
+}
+
+async function loadVCMEmailData() {
+  if(window._vcmEmailFullData)return window._vcmEmailFullData;
+  const res=await fetch(`${SUPA_URL}/rest/v1/rpc/get_vcm_export?limit=50000`,{method:'POST',headers:{'Content-Type':'application/json','apikey':SUPA_KEY,'Authorization':`Bearer ${SUPA_KEY}`,'Prefer':'count=none'},body:'{}'});
+  window._vcmEmailFullData=await res.json();
+  return window._vcmEmailFullData;
+}
+
+async function previewEmail() {
+  const checked=[...document.querySelectorAll('.email-cb:checked')];
+  if(!checked.length){alert('Seleccioná al menos un vendedor.');return;}
+  document.getElementById('emailStatus').textContent='⏳ Cargando datos para vista previa...';
+  const vcmData=await loadVCMEmailData();
+  _previewList=[];
+  for(const cb of checked.slice(0,5)){
+    const v=_emailVendorData[parseInt(cb.dataset.idx)];
+    if(!v)continue;
+    const{clientes,totals}=await buildVCMPayload(vcmData,v.vendedor);
+    _previewList.push({v,html:buildEmailHTML(v.vendedor,totals,clientes)});
+  }
+  _previewIdx=0;renderPreview();
+  document.getElementById('emailPreviewModal').style.display='flex';
+  document.getElementById('emailStatus').textContent='';
+}
+
+function renderPreview(){
+  if(!_previewList.length)return;
+  const{v,html}=_previewList[_previewIdx];
+  document.getElementById('previewVendIdx').textContent=`${_previewIdx+1} / ${_previewList.length}`;
+  document.getElementById('previewEmailHeader').innerHTML=`<strong>Para:</strong> ${v.correo} &nbsp; <strong>CC:</strong> ${v.correo_supervisor} &nbsp; <strong>Asunto:</strong> Metas Q3 2026 \u2014 ${v.label}`;
+  document.getElementById('emailPreviewFrame').srcdoc=html;
+}
+
+function changePreview(dir){_previewIdx=Math.max(0,Math.min(_previewList.length-1,_previewIdx+dir));renderPreview();}
+function closePreview(){document.getElementById('emailPreviewModal').style.display='none';}
+
+async function sendEmails(){
+  const checked=[...document.querySelectorAll('.email-cb:checked')];
+  if(!checked.length){alert('Seleccioná al menos un vendedor.');return;}
+  const btn=document.getElementById('sendEmailBtn');
+  btn.disabled=true;btn.textContent='⏳ Preparando...';
+  document.getElementById('emailStatus').textContent='⏳ Cargando datos VCM...';
+  try{
+    const vcmData=await loadVCMEmailData();
+    const vendedores=[];
+    for(const cb of checked){
+      const v=_emailVendorData[parseInt(cb.dataset.idx)];
+      if(!v)continue;
+      const{clientes,totals}=await buildVCMPayload(vcmData,v.vendedor);
+      vendedores.push({vendedor:v.vendedor,correo:v.correo,correo_supervisor:v.correo_supervisor,clientes,totals});
+    }
+    btn.textContent=`⏳ Enviando ${vendedores.length}...`;
+    document.getElementById('emailStatus').textContent=`⏳ Enviando a ${vendedores.length} vendedores...`;
+    const res=await fetch(EDGE_URL,{method:'POST',headers:{'Content-Type':'application/json','apikey':SUPA_KEY,'Authorization':`Bearer ${SUPA_KEY}`},body:JSON.stringify({vendedores})});
+    const result=await res.json();
+    if(result.ok){
+      const sent=result.results.filter(r=>r.status==='sent').length;
+      const errs=result.results.filter(r=>r.status==='error');
+      let msg=`\u2705 ${sent} correo${sent!==1?'s':''} enviado${sent!==1?'s':''} correctamente.`;
+      if(errs.length)msg+=` \u26a0\ufe0f ${errs.length} error(es): ${errs.map(e=>e.vendedor.replace(/^\d+-/,'').trim()).join(', ')}`;
+      document.getElementById('emailStatus').innerHTML=`<span style="color:var(--teal)">${msg}</span>`;
+    }else{
+      document.getElementById('emailStatus').innerHTML=`<span style="color:var(--red)">\u274c Error: ${result.error}</span>`;
+    }
+  }catch(e){
+    document.getElementById('emailStatus').innerHTML=`<span style="color:var(--red)">\u274c ${e.message}</span>`;
+  }finally{btn.disabled=false;btn.textContent='\ud83d\udce4 Enviar seleccionados';}
 }
 
 // ==================== EXCEL EXPORT ====================
