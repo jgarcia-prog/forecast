@@ -1196,7 +1196,10 @@ body {
       <button class="btn btn-outline" onclick="selectAllEmails(false)" style="font-size:12px;padding:5px 12px">☐ Ninguno</button>
       <input type="text" id="emailSearch" placeholder="🔍 Filtrar vendedor..." oninput="filterEmailList(this.value)" style="font-size:12px;padding:5px 10px;width:200px">
       <span id="emailSelectedCount" style="font-size:12px;color:var(--text3)"></span>
-      <div style="margin-left:auto;display:flex;gap:8px">
+      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;padding:4px 10px;border-radius:6px;border:1px solid #f59e0b;color:#b45309;background:#fffbeb">
+          <input type="checkbox" id="testModeToggle" style="accent-color:#f59e0b"> 🧪 Modo prueba — enviar solo a <strong>jgarcia@cofersa.cr</strong>
+        </label>
         <button class="btn btn-outline" onclick="previewEmail()" style="font-size:12px;padding:5px 14px;border-color:#7c3aed;color:#7c3aed">👁 Vista previa</button>
         <button class="btn btn-save" id="sendEmailBtn" onclick="sendEmails()" style="font-size:12px;padding:5px 14px;background:#7c3aed!important;border-color:#7c3aed!important">📤 Enviar seleccionados</button>
       </div>
@@ -3076,9 +3079,16 @@ async function sendEmails(){
       const{clientes,totals}=await buildVCMPayload(vcmData,v.vendedor);
       vendedores.push({vendedor:v.vendedor,correo:v.correo,correo_supervisor:v.correo_supervisor,clientes,totals});
     }
-    btn.textContent=`⏳ Enviando ${vendedores.length}...`;
-    document.getElementById('emailStatus').textContent=`⏳ Enviando a ${vendedores.length} vendedores...`;
-    const res=await fetch(EDGE_URL,{method:'POST',headers:{'Content-Type':'application/json','apikey':SUPA_KEY,'Authorization':`Bearer ${SUPA_KEY}`},body:JSON.stringify({vendedores})});
+    const testMode = document.getElementById('testModeToggle')?.checked;
+    const testEmail = 'jgarcia@cofersa.cr';
+    const payload = testMode
+      ? vendedores.map(v => ({ ...v, correo: testEmail, correo_supervisor: testEmail }))
+      : vendedores;
+    btn.textContent=`⏳ Enviando ${payload.length}...`;
+    document.getElementById('emailStatus').innerHTML = testMode
+      ? `<span style="color:#b45309">🧪 Modo prueba — todos los correos van a <strong>${testEmail}</strong>...</span>`
+      : `<span style="color:var(--text3)">⏳ Enviando a ${payload.length} vendedores...</span>`;
+    const res=await fetch(EDGE_URL,{method:'POST',headers:{'Content-Type':'application/json','apikey':SUPA_KEY,'Authorization':`Bearer ${SUPA_KEY}`},body:JSON.stringify({vendedores:payload})});
     const result=await res.json();
     if(result.ok){
       const sent=result.results.filter(r=>r.status==='sent').length;
