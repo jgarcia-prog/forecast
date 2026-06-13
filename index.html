@@ -3006,11 +3006,12 @@ async function openEmailModal() {
       portafolio: r.portafolio || 'Portafolio 0'
     }));
 
-    // Build supervisor groups
+    // Build supervisor groups — key by email to avoid duplicate codes (e.g. 92- vs 95-)
     const superMap = {};
     _emailVendorData.forEach(v => {
-      if (!superMap[v.supervisor_raw]) superMap[v.supervisor_raw] = { label: v.supervisor, correo: v.correo_supervisor, vendedores: [] };
-      superMap[v.supervisor_raw].vendedores.push(v);
+      const key = v.correo_supervisor || v.supervisor_raw;
+      if (!superMap[key]) superMap[key] = { label: v.supervisor, correo: v.correo_supervisor, vendedores: [] };
+      superMap[key].vendedores.push(v);
     });
     _emailSuperData = Object.values(superMap).filter(s => s.correo).sort((a,b) => a.label.localeCompare(b.label, 'es'));
 
