@@ -710,15 +710,15 @@ body {
         <thead>
           <tr>
             <th>Zona de Venta</th>
+            <th>Portafolio</th>
             <th class="num">Hist Q3 2024 (¢)</th>
             <th class="num">Hist Q3 2025 (¢)</th>
-            <th class="num">Hist Q2 2024 (¢)</th>
             <th class="num">Prom Mensual 2025 (¢)</th>
             <th class="num">Meta Jul 2026 (¢)</th>
             <th class="num">Meta Ago 2026 (¢)</th>
             <th class="num">Meta Sep 2026 (¢)</th>
             <th class="num">Total Q3 2026 (¢)</th>
-            <th class="num">Var % vs Q2 2025</th>
+            <th class="num">Var % vs Q3 2025</th>
             <th class="num">Ajuste %</th>
           </tr>
         </thead>
@@ -1788,14 +1788,23 @@ function renderVendTable(vendProj) {
   const totTotal = byAlpha.reduce((s,x)=>s+x.total,0);
   const totVar = totHist25 > 0 ? ((totTotal - totHist25)/totHist25*100) : 0;
 
+  const PORT_COLORS_VT = { 'Portafolio 1': '#dc2626', 'Portafolio 2': '#06b6d4', 'Portafolio 3': '#1e3a8a' };
+  const vendPort = RAW_DATA.vendedorPortafolio || {};
+
   // Table — alphabetical order
   const tbody = document.getElementById('vendTableBody');
   tbody.innerHTML = byAlpha.map(x => {
     const varPct = x.histQ2_2025 > 0 ? ((x.total - x.histQ2_2025) / x.histQ2_2025 * 100) : 0;
     const adj = state.adjustments.vendedores[x.v] || 0;
     const adjStr = (adj >= 0 ? '+' : '') + adj.toFixed(1) + '%';
+    const port = vendPort[x.v] || '';
+    const portColor = PORT_COLORS_VT[port] || 'var(--text3)';
+    const portBadge = port
+      ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:${portColor};background:${portColor}18;padding:2px 7px;border-radius:4px;border:1px solid ${portColor}40">${port}</span>`
+      : '<span style="font-size:10px;color:var(--text3)">—</span>';
     return `<tr>
       <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${x.v.replace(/^\d+-/,'').trim()}</td>
+      <td>${portBadge}</td>
       <td class="num">${fmt(x.histQ2_2024)}</td>
       <td class="num">${fmt(x.histQ2_2025)}</td>
       <td class="num">${fmt(x.avgMonthly)}</td>
@@ -1811,8 +1820,9 @@ function renderVendTable(vendProj) {
   const tfoot = document.getElementById('vendTableFoot');
   tfoot.innerHTML = `<tr class="total-row">
     <td><strong>TOTAL</strong></td>
-    <td class="num"><strong>${fmt(totHist25)}</strong></td>
+    <td></td>
     <td class="num"><strong>${fmt(totHist24)}</strong></td>
+    <td class="num"><strong>${fmt(totHist25)}</strong></td>
     <td class="num"><strong>${fmt(totAvg)}</strong></td>
     <td class="num"><strong>${fmt(totAbr)}</strong></td>
     <td class="num"><strong>${fmt(totMay)}</strong></td>
