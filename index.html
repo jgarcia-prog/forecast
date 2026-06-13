@@ -1188,6 +1188,9 @@ let state = {
 };
 
 // Save a deep copy of original embedded data for reset
+// vendedorPortafolio is populated when loading from Supabase
+// Empty = no portafolio filter applied (show all brands per vendor)
+if (!RAW_DATA.vendedorPortafolio) RAW_DATA.vendedorPortafolio = {};
 const ORIGINAL_RAW_DATA = JSON.parse(JSON.stringify(RAW_DATA));
 
 // ==================== INIT ====================
@@ -1918,18 +1921,13 @@ function renderVendMarcaTable(vendProj) {
   const grandH24   = sorted.reduce((s,x)=>s+x.histQ2_2024,0);
   const grandVar   = grandH25 > 0 ? ((grandTotal-grandH25)/grandH25*100) : 0;
 
-  // Compute marca totals (historical) to derive per-vendor participation weight
-  const marcaHistTotal = {};
-  const marcaProjTotal = [0,0,0];
-  Object.entries(RAW_DATA.marcas).forEach(([marca, d]) => {
-    marcaHistTotal[marca] = getHistQ2(d.historico, 2025);
-    getProyeccion(d).forEach((v,i)=>{ marcaProjTotal[i]+=v; });
-  });
   const marcaProj = computeMarcaProjections();
+  // vendedorPortafolio: map from Supabase (empty = show all brands)
+  const vendPort  = RAW_DATA.vendedorPortafolio || {};
 
   let html = '';
   sorted.forEach((x, idx) => {
-    const label = x.v.replace(/^\d+-/,'').replace(/\.\./g,'.').trim();
+    const label   = x.v.replace(/^\d+-/,'').replace(/\.\./g,'.').trim();
     const varPct  = x.histQ2_2025 > 0 ? ((x.total - x.histQ2_2025)/x.histQ2_2025*100) : 0;
     const partPct = grandTotal > 0 ? (x.total/grandTotal*100) : 0;
 
@@ -1945,26 +1943,47 @@ function renderVendMarcaTable(vendProj) {
       <td class="num">${partPct.toFixed(1)}%</td>
     </tr>`;
 
-    // Child rows: one per marca, weighted by marca's share of grand total
-    Object.entries(marcaProj).forEach(([marca, md]) => {
-      const mTotal  = md.proj.reduce((a,b)=>a+b,0);
-      const mGrand  = Object.values(marcaProj).reduce((s,d)=>s+d.proj.reduce((a,b)=>a+b,0),0) || 1;
-      const share   = mGrand > 0 ? mTotal/mGrand : 0;
-      const mAbr    = x.proj[0]*share, mMay=x.proj[1]*share, mJun=x.proj[2]*share;
-      const mTot    = mAbr+mMay+mJun;
-      const mH25    = x.histQ2_2025*share, mH24=x.histQ2_2024*share;
-      const mVar    = mH25>0?((mTot-mH25)/mH25*100):0;
-      const mPart   = grandTotal>0?(mTot/grandTotal*100):0;
-      if (mTot < 1000) return; // skip negligible
-      html += `<tr class="vp-port-row p1 hidden" data-parent-vm="${idx}">
-        <td style="padding-left:28px">🏷️ ${marca}</td>
-        <td class="num">${fmt(mH25)}</td><td class="num">${fmt(mH24)}</td>
-        <td class="num">${fmt(mAbr)}</td><td class="num">${fmt(mMay)}</td><td class="num">${fmt(mJun)}</td>
-        <td class="num" style="font-weight:600">${fmt(mTot)}</td>
-        <td class="num ${mVar>=0?'pos':'neg'}">${fmtPct(mVar)}</td>
-        <td class="num">${mPart.toFixed(1)}%</td>
-      </tr>`;
+    // Filter brands by vendedor's portafolio (if mapping exists)
+    const vendedorPort = vendPort[x.v] || null;
+    const marcasDelVendedor = Object.entries(marcaProj).filter(([marca, md]) => {
+      if (!vendedorPort) return true; // no mapping → show all brands
+      const marcaPortafolio = RAW_DATA.marcas[marca]?.portafolio || null;
+      return marcaPortafolio === vendedorPort;
     });
+
+    // Sum of all brands in this vendor's portafolio for proportional share
+    const portTotal = marcasDelVendedor.reduce((s, [,md]) => s + md.proj.reduce((a,b)=>a+b,0), 0) || 1;
+
+    marcasDelVendedor
+      .sort((a, b) => b[1].proj.reduce((s,v)=>s+v,0) - a[1].proj.reduce((s,v)=>s+v,0))
+      .forEach(([marca, md]) => {
+        const mTotal = md.proj.reduce((a,b)=>a+b,0);
+        const share  = portTotal > 0 ? mTotal / portTotal : 0;
+        const mAbr   = x.proj[0]*share, mMay=x.proj[1]*share, mJun=x.proj[2]*share;
+        const mTot   = mAbr+mMay+mJun;
+        const mH25   = x.histQ2_2025*share;
+        const mH24   = x.histQ2_2024*share;
+        const mVar   = mH25>0?((mTot-mH25)/mH25*100):0;
+        const mPart  = grandTotal>0?(mTot/grandTotal*100):0;
+        const portBadge = RAW_DATA.marcas[marca]?.portafolio
+          ? `<span style="font-size:9px;background:var(--bg3);color:var(--text2);padding:1px 5px;border-radius:4px;margin-left:5px">${RAW_DATA.marcas[marca].portafolio}</span>`
+          : '';
+        if (mTot < 1000) return;
+        html += `<tr class="vp-port-row p1 hidden" data-parent-vm="${idx}">
+          <td style="padding-left:28px">🏷️ ${marca}${portBadge}</td>
+          <td class="num">${fmt(mH25)}</td><td class="num">${fmt(mH24)}</td>
+          <td class="num">${fmt(mAbr)}</td><td class="num">${fmt(mMay)}</td><td class="num">${fmt(mJun)}</td>
+          <td class="num" style="font-weight:600">${fmt(mTot)}</td>
+          <td class="num ${mVar>=0?'pos':'neg'}">${fmtPct(mVar)}</td>
+          <td class="num">${mPart.toFixed(1)}%</td>
+        </tr>`;
+      });
+
+    if (marcasDelVendedor.length === 0) {
+      html += `<tr class="vp-port-row p1 hidden" data-parent-vm="${idx}">
+        <td colspan="9" style="padding-left:28px;color:var(--text3);font-style:italic">Sin marcas asignadas para ${vendedorPort || 'este portafolio'}</td>
+      </tr>`;
+    }
   });
 
   document.getElementById('vendMarcaBody').innerHTML = html;
@@ -2945,6 +2964,15 @@ async function supaRPC(fn) {
   return res.json();
 }
 
+async function supaTable(table, select = '*') {
+  const url = `${SUPA_URL}/rest/v1/${encodeURIComponent(table)}?select=${select}`;
+  const res = await fetch(url, {
+    headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
+  });
+  if (!res.ok) throw new Error(`Table ${table} failed: ${res.status}`);
+  return res.json();
+}
+
 function rowToHist(row) {
   // Convert m0-m23 row to a 30-element array (6 zeros + 24 real)
   return [0,0,0,0,0,0, ...Array.from({length:24}, (_,i) => Number(row[`m${i}`]) || 0)];
@@ -2959,12 +2987,21 @@ async function loadFromSupabase() {
   document.getElementById('dataStatus').className = 'status-chip chip-warn';
 
   try {
-    // Fetch all 3 RPCs in parallel
-    const [vendRows, marcaRows, clienteRows] = await Promise.all([
+    // Fetch all 3 RPCs + Reglas in parallel
+    const [vendRows, marcaRows, clienteRows, reglas] = await Promise.all([
       supaRPC('get_vendedores_hist'),
       supaRPC('get_marcas_hist'),
-      supaRPC('get_clientes_hist')
+      supaRPC('get_clientes_hist'),
+      supaTable('Reglas de Portafolio', 'vendedor_secundario,portafolio')
     ]);
+
+    // Build vendedor → portafolio mapping from Reglas de Portafolio
+    const vendedorPortafolio = {};
+    reglas.forEach(r => {
+      if (r.vendedor_secundario && r.portafolio)
+        vendedorPortafolio[r.vendedor_secundario.trim()] = r.portafolio.trim();
+    });
+    RAW_DATA.vendedorPortafolio = vendedorPortafolio;
 
     // ── Build RAW_DATA.vendedores ─────────────────────────────
     const newVendedores = {};
