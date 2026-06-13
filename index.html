@@ -710,8 +710,8 @@ body {
         <thead>
           <tr>
             <th>Zona de Venta</th>
-            <th class="num">Hist Q3 2025 (¢)</th>
             <th class="num">Hist Q3 2024 (¢)</th>
+            <th class="num">Hist Q3 2025 (¢)</th>
             <th class="num">Hist Q2 2024 (¢)</th>
             <th class="num">Prom Mensual 2025 (¢)</th>
             <th class="num">Meta Jul 2026 (¢)</th>
@@ -745,8 +745,8 @@ body {
         <thead>
           <tr>
             <th>Marca</th>
-            <th class="num">Hist Q3 2025 (¢)</th>
             <th class="num">Hist Q3 2024 (¢)</th>
+            <th class="num">Hist Q3 2025 (¢)</th>
             <th class="num">Hist Q2 2024 (¢)</th>
             <th class="num">Meta Jul 2026 (¢)</th>
             <th class="num">Meta Ago 2026 (¢)</th>
@@ -791,8 +791,8 @@ body {
         <thead>
           <tr>
             <th style="min-width:280px">Zona / Vendedor</th>
-            <th class="num">Hist Q3 2025 (¢)</th>
             <th class="num">Hist Q3 2024 (¢)</th>
+            <th class="num">Hist Q3 2025 (¢)</th>
             <th class="num">Hist Q2 2024 (¢)</th>
             <th class="num">Meta Jul 2026 (¢)</th>
             <th class="num">Meta Ago 2026 (¢)</th>
@@ -825,8 +825,8 @@ body {
           <tr>
             <th>#</th>
             <th>Cliente</th>
-            <th class="num">Hist Q3 2025 (¢)</th>
             <th class="num">Hist Q3 2024 (¢)</th>
+            <th class="num">Hist Q3 2025 (¢)</th>
             <th class="num">Hist Q2 2024 (¢)</th>
             <th class="num">Meta Jul 2026 (¢)</th>
             <th class="num">Meta Ago 2026 (¢)</th>
@@ -1086,8 +1086,8 @@ body {
         <thead>
           <tr>
             <th style="min-width:280px">Vendedor / Marca</th>
-            <th class="num">Hist Q3 2025 (¢)</th>
             <th class="num">Hist Q3 2024 (¢)</th>
+            <th class="num">Hist Q3 2025 (¢)</th>
             <th class="num">Hist Q2 2024 (¢)</th>
             <th class="num">Meta Jul 2026 (¢)</th>
             <th class="num">Meta Ago 2026 (¢)</th>
@@ -1123,8 +1123,8 @@ body {
         <thead>
           <tr>
             <th style="min-width:280px">Vendedor / Cliente</th>
-            <th class="num">Hist Q3 2025 (¢)</th>
             <th class="num">Hist Q3 2024 (¢)</th>
+            <th class="num">Hist Q3 2025 (¢)</th>
             <th class="num">Hist Q2 2024 (¢)</th>
             <th class="num">Meta Jul 2026 (¢)</th>
             <th class="num">Meta Ago 2026 (¢)</th>
@@ -1159,8 +1159,8 @@ body {
         <thead>
           <tr>
             <th style="min-width:300px">Zona / Cliente / Marca</th>
-            <th class="num">Hist Q3 2025 (¢)</th>
             <th class="num">Hist Q3 2024 (¢)</th>
+            <th class="num">Hist Q3 2025 (¢)</th>
             <th class="num">Meta Jul 2026 (¢)</th>
             <th class="num">Meta Ago 2026 (¢)</th>
             <th class="num">Meta Sep 2026 (¢)</th>
@@ -1796,8 +1796,8 @@ function renderVendTable(vendProj) {
     const adjStr = (adj >= 0 ? '+' : '') + adj.toFixed(1) + '%';
     return `<tr>
       <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${x.v.replace(/^\d+-/,'').trim()}</td>
-      <td class="num">${fmt(x.histQ2_2025)}</td>
       <td class="num">${fmt(x.histQ2_2024)}</td>
+      <td class="num">${fmt(x.histQ2_2025)}</td>
       <td class="num">${fmt(x.avgMonthly)}</td>
       <td class="num">${fmt(x.proj[0])}</td>
       <td class="num">${fmt(x.proj[1])}</td>
@@ -1859,8 +1859,8 @@ function renderMarcaTable(marcaProj) {
     const adjStr = (adj >= 0 ? '+' : '') + adj.toFixed(1) + '%';
     return `<tr>
       <td>${x.m}</td>
-      <td class="num">${fmt(x.histQ2_2025)}</td>
       <td class="num">${fmt(x.histQ2_2024)}</td>
+      <td class="num">${fmt(x.histQ2_2025)}</td>
       <td class="num">${fmt(x.proj[0])}</td>
       <td class="num">${fmt(x.proj[1])}</td>
       <td class="num">${fmt(x.proj[2])}</td>
@@ -1973,8 +1973,8 @@ function renderVCMTable(vendProj) {
 
     html += `<tr class="vp-vendor-row" onclick="toggleVCMVendedor(${vidx})">
       <td><span class="vp-toggle" id="vcmvtog_${vidx}">+</span><strong>${label}</strong></td>
-      <td class="num">${fmt(x.histQ2_2025)}</td>
       <td class="num">${fmt(x.histQ2_2024)}</td>
+      <td class="num">${fmt(x.histQ2_2025)}</td>
       <td class="num">${fmt(x.proj[0])}</td>
       <td class="num">${fmt(x.proj[1])}</td>
       <td class="num">${fmt(x.proj[2])}</td>
@@ -2010,8 +2010,8 @@ function renderVCMTable(vendProj) {
         const cH24    = cd.histQ2_2024||0;
         html += `<tr class="vp-port-row p2 hidden" data-vcm-vend="${vidx}" onclick="toggleVCMCliente('${rowId}','${safeVend}','${safeAlias}')">
           <td style="padding-left:28px"><span class="vp-toggle" id="${rowId}_tog">+</span>🏪 ${alias}</td>
-          <td class="num">${fmt(cH25)}</td>
           <td class="num">${fmt(cH24)}</td>
+          <td class="num">${fmt(cH25)}</td>
           <td class="num">${fmt(cAbr)}</td><td class="num">${fmt(cMay)}</td><td class="num">${fmt(cJun)}</td>
           <td class="num" style="font-weight:600">${fmt(cTot)}</td>
           <td class="num ${cVar>=0?'pos':'neg'}">${fmtPct(cVar)}</td>
@@ -2030,8 +2030,8 @@ function renderVCMTable(vendProj) {
   document.getElementById('vcmBody').innerHTML = html;
   document.getElementById('vcmFoot').innerHTML = `<tr class="total-row">
     <td><strong>TOTAL GENERAL</strong></td>
-    <td class="num"><strong>${fmt(grandH25)}</strong></td>
     <td class="num"><strong>${fmt(sorted.reduce((s,x)=>s+x.histQ2_2024,0))}</strong></td>
+    <td class="num"><strong>${fmt(grandH25)}</strong></td>
     <td class="num"><strong>${fmt(sorted.reduce((s,x)=>s+x.proj[0],0))}</strong></td>
     <td class="num"><strong>${fmt(sorted.reduce((s,x)=>s+x.proj[1],0))}</strong></td>
     <td class="num"><strong>${fmt(sorted.reduce((s,x)=>s+x.proj[2],0))}</strong></td>
@@ -2116,8 +2116,8 @@ async function toggleVCMCliente(rowId, vendedor, alias) {
         🏷️ ${m.marca}
         <span style="font-size:10px;color:var(--text3);margin-left:4px">${m.portafolio}</span>
       </td>
-      <td style="text-align:right;padding:5px 8px;font-size:12px">${fmt(h25)}</td>
       <td style="text-align:right;padding:5px 8px;font-size:12px">${fmt(h24)}</td>
+      <td style="text-align:right;padding:5px 8px;font-size:12px">${fmt(h25)}</td>
       <td style="text-align:right;padding:5px 8px;font-size:12px">${fmt(Number(m.m_jul25)||0)}</td>
       <td style="text-align:right;padding:5px 8px;font-size:12px">${fmt(Number(m.m_ago25)||0)}</td>
       <td style="text-align:right;padding:5px 8px;font-size:12px">${fmt(Number(m.m_sep25)||0)}</td>
@@ -2153,8 +2153,8 @@ function renderVendMarcaTable(vendProj) {
 
     html += `<tr class="vp-vendor-row" onclick="toggleVP2(${idx},'vm')">
       <td><span class="vp-toggle" id="vmtog_${idx}">+</span><strong>${label}</strong></td>
-      <td class="num">${fmt(x.histQ2_2025)}</td>
       <td class="num">${fmt(x.histQ2_2024)}</td>
+      <td class="num">${fmt(x.histQ2_2025)}</td>
       <td class="num">${fmt(x.proj[0])}</td>
       <td class="num">${fmt(x.proj[1])}</td>
       <td class="num">${fmt(x.proj[2])}</td>
@@ -2210,8 +2210,8 @@ function renderVendMarcaTable(vendProj) {
   document.getElementById('vendMarcaBody').innerHTML = html;
   document.getElementById('vendMarcaFoot').innerHTML = `<tr class="total-row">
     <td><strong>TOTAL GENERAL</strong></td>
-    <td class="num"><strong>${fmt(grandH25)}</strong></td>
     <td class="num"><strong>${fmt(grandH24)}</strong></td>
+    <td class="num"><strong>${fmt(grandH25)}</strong></td>
     <td class="num"><strong>${fmt(sorted.reduce((s,x)=>s+x.proj[0],0))}</strong></td>
     <td class="num"><strong>${fmt(sorted.reduce((s,x)=>s+x.proj[1],0))}</strong></td>
     <td class="num"><strong>${fmt(sorted.reduce((s,x)=>s+x.proj[2],0))}</strong></td>
@@ -2241,8 +2241,8 @@ function renderVendClienteTable(vendProj, clientProj) {
 
     html += `<tr class="vp-vendor-row" onclick="toggleVP2(${idx},'vc')">
       <td><span class="vp-toggle" id="vctog_${idx}">+</span><strong>${label}</strong></td>
-      <td class="num">${fmt(x.histQ2_2025)}</td>
       <td class="num">${fmt(x.histQ2_2024)}</td>
+      <td class="num">${fmt(x.histQ2_2025)}</td>
       <td class="num">${fmt(x.proj[0])}</td>
       <td class="num">${fmt(x.proj[1])}</td>
       <td class="num">${fmt(x.proj[2])}</td>
@@ -2308,8 +2308,8 @@ function renderVendClienteTable(vendProj, clientProj) {
   document.getElementById('vendClienteBody').innerHTML = html;
   document.getElementById('vendClienteFoot').innerHTML = `<tr class="total-row">
     <td><strong>TOTAL GENERAL</strong></td>
-    <td class="num"><strong>${fmt(grandH25)}</strong></td>
     <td class="num"><strong>${fmt(grandH24)}</strong></td>
+    <td class="num"><strong>${fmt(grandH25)}</strong></td>
     <td class="num"><strong>${fmt(sorted.reduce((s,x)=>s+x.proj[0],0))}</strong></td>
     <td class="num"><strong>${fmt(sorted.reduce((s,x)=>s+x.proj[1],0))}</strong></td>
     <td class="num"><strong>${fmt(sorted.reduce((s,x)=>s+x.proj[2],0))}</strong></td>
@@ -2391,8 +2391,8 @@ function renderVendPortTable(vendProj, portProj) {
     // Vendor summary row
     html += `<tr class="vp-vendor-row" id="vrow_${idx}" onclick="toggleVP(${idx})">
       <td><span class="vp-toggle" id="vtog_${idx}">+</span>${label}</td>
-      <td class="num">${fmt(x.histQ2_2025)}</td>
       <td class="num">${fmt(x.histQ2_2024)}</td>
+      <td class="num">${fmt(x.histQ2_2025)}</td>
       <td class="num">${fmt(x.proj[0])}</td>
       <td class="num">${fmt(x.proj[1])}</td>
       <td class="num">${fmt(x.proj[2])}</td>
@@ -2432,8 +2432,8 @@ function renderVendPortTable(vendProj, portProj) {
   document.getElementById('vendPortTableBody').innerHTML = html;
   document.getElementById('vendPortTableFoot').innerHTML = `<tr class="total-row">
     <td><strong>TOTAL GENERAL</strong></td>
-    <td class="num"><strong>${fmt(totH25)}</strong></td>
     <td class="num"><strong>${fmt(totH24)}</strong></td>
+    <td class="num"><strong>${fmt(totH25)}</strong></td>
     <td class="num"><strong>${fmt(totAbr)}</strong></td>
     <td class="num"><strong>${fmt(totMay)}</strong></td>
     <td class="num"><strong>${fmt(totJun)}</strong></td>
@@ -2502,8 +2502,8 @@ function renderClientTable(clientProj) {
     return `<tr>
       <td style="color:var(--text2)">${idx+1}</td>
       <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis">${x.cl}</td>
-      <td class="num">${fmt(x.histQ2_2025)}</td>
       <td class="num">${fmt(x.histQ2_2024)}</td>
+      <td class="num">${fmt(x.histQ2_2025)}</td>
       <td class="num">${fmt(x.proj[0])}</td>
       <td class="num">${fmt(x.proj[1])}</td>
       <td class="num">${fmt(x.proj[2])}</td>
@@ -3064,7 +3064,7 @@ function exportExcel() {
   vpSorted.forEach(x => {
     const varPct = x.histQ2_2025>0?((x.total-x.histQ2_2025)/x.histQ2_2025*100):0;
     vpRows.push(['Vendedor', x.v.replace(/^\d+-/,'').trim(),
-      Math.round(x.histQ2_2025), Math.round(x.histQ2_2024),
+      Math.round(x.histQ2_2024), Math.round(x.histQ2_2025),
       Math.round(x.proj[0]), Math.round(x.proj[1]), Math.round(x.proj[2]),
       Math.round(x.total), varPct.toFixed(2)+'%', (x.total/grandVPTotal*100).toFixed(1)+'%']);
     ['Portafolio 1','Portafolio 2','Portafolio 3'].forEach((port, pi) => {
@@ -3095,7 +3095,7 @@ function exportExcel() {
   vmSorted.forEach(x => {
     const varPct = x.histQ2_2025>0?((x.total-x.histQ2_2025)/x.histQ2_2025*100):0;
     vmRows.push(['Vendedor', x.v.replace(/^\d+-/,'').trim(),
-      Math.round(x.histQ2_2025), Math.round(x.histQ2_2024),
+      Math.round(x.histQ2_2024), Math.round(x.histQ2_2025),
       Math.round(x.proj[0]), Math.round(x.proj[1]), Math.round(x.proj[2]),
       Math.round(x.total), varPct.toFixed(2)+'%', (x.total/grandVMTotal*100).toFixed(1)+'%']);
     Object.entries(marcaProj2)
@@ -3124,7 +3124,7 @@ function exportExcel() {
   vmSorted.forEach(x => {
     const varPct = x.histQ2_2025>0?((x.total-x.histQ2_2025)/x.histQ2_2025*100):0;
     vcRows.push(['Vendedor', x.v.replace(/^\d+-/,'').trim(),
-      Math.round(x.histQ2_2025), Math.round(x.histQ2_2024),
+      Math.round(x.histQ2_2024), Math.round(x.histQ2_2025),
       Math.round(x.proj[0]), Math.round(x.proj[1]), Math.round(x.proj[2]),
       Math.round(x.total), varPct.toFixed(2)+'%', (x.total/grandVCTotal*100).toFixed(1)+'%']);
     if (!hasMapping) return;
