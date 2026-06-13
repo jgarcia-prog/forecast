@@ -3019,15 +3019,24 @@ async function openEmailModal() {
 
 function renderSupervisorList(list) {
   document.getElementById('emailVendorList').innerHTML = list.map((s, i) => {
-    return `<label style="display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:var(--bg)">
-      <input type="checkbox" class="email-cb" data-idx="${i}" data-mode="supervisores" checked style="width:15px;height:15px;accent-color:#7c3aed" onchange="updateEmailCount()">
-      <div style="flex:1">
+    return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg)">
+      <input type="checkbox" class="email-cb" data-idx="${i}" data-mode="supervisores" checked style="width:15px;height:15px;accent-color:#7c3aed;flex-shrink:0" onchange="updateEmailCount()">
+      <div style="flex:1;cursor:pointer" onclick="this.closest('div').querySelector('input').click()">
         <div style="font-size:13px;font-weight:600;color:var(--text)">👥 ${s.label}</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">
           ✉️ ${s.correo} &nbsp;·&nbsp;
           ${s.vendedores.length} vendedor${s.vendedores.length !== 1 ? 'es' : ''}: <span style="color:var(--text2)">${s.vendedores.map(v=>v.label).join(', ')}</span>
         </div>
-      </div></label>`;
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button onclick="previewEmailSingle('supervisores',${i})" title="Vista previa" style="width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:var(--bg);cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text2)">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+        <button onclick="sendEmailSingle('supervisores',${i})" title="Enviar este correo" style="width:34px;height:34px;border-radius:8px;border:none;background:#009ee3;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </div>`;
   }).join('');
   updateEmailCount();
 }
@@ -3038,9 +3047,17 @@ function buildSupervisorEmailHTML(supervisor, vendedoresData) {
   const vc = v => v >= 0 ? '#059669' : '#dc2626';
 
   const vendProj = computeVendProjections();
+  // Fuzzy key match: strip numeric prefix and compare lowercase
+  const findProj = (vendedor) => {
+    if (vendProj[vendedor]) return vendProj[vendedor];
+    const norm = v => v.replace(/^\d+-/, '').trim().toLowerCase();
+    const key = Object.keys(vendProj).find(k => norm(k) === norm(vendedor));
+    return key ? vendProj[key] : null;
+  };
+
   const teamRows = vendedoresData
     .map(v => {
-      const p = vendProj[v.vendedor];
+      const p = findProj(v.vendedor);
       if (!p) return null;
       const total = p.proj.reduce((a,b)=>a+b,0);
       const vt = p.histQ2_2025 > 0 ? ((total - p.histQ2_2025) / p.histQ2_2025) * 100 : 0;
@@ -3136,14 +3153,72 @@ function renderEmailList(list) {
   const PC = { 'Portafolio 1':'#dc2626','Portafolio 2':'#06b6d4','Portafolio 3':'#1e3a8a' };
   document.getElementById('emailVendorList').innerHTML = list.map((v,i) => {
     const pc = PC[v.portafolio]||'#6b7280';
-    return `<label style="display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:var(--bg)">
-      <input type="checkbox" class="email-cb" data-idx="${i}" checked style="width:15px;height:15px;accent-color:#7c3aed" onchange="updateEmailCount()">
-      <div style="flex:1">
+    return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg)">
+      <input type="checkbox" class="email-cb" data-idx="${i}" checked style="width:15px;height:15px;accent-color:#7c3aed;flex-shrink:0" onchange="updateEmailCount()">
+      <div style="flex:1;cursor:pointer" onclick="this.closest('div').querySelector('input').click()">
         <div style="font-size:13px;font-weight:600;color:var(--text)">${v.label} <span style="font-size:10px;font-weight:600;color:${pc};background:${pc}18;padding:1px 6px;border-radius:4px;border:1px solid ${pc}40">${v.portafolio}</span></div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">✉️ ${v.correo} &nbsp;·&nbsp; 👤 ${v.supervisor} (${v.correo_supervisor})</div>
-      </div></label>`;
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button onclick="previewEmailSingle('vendedores',${i})" title="Vista previa" style="width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:var(--bg);cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text2)">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+        <button onclick="sendEmailSingle('vendedores',${i})" title="Enviar este correo" style="width:34px;height:34px;border-radius:8px;border:none;background:#009ee3;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </div>`;
   }).join('');
   updateEmailCount();
+}
+
+async function previewEmailSingle(mode, idx) {
+  document.getElementById('emailStatus').textContent = '⏳ Preparando vista previa...';
+  _previewList = [];
+  if (mode === 'supervisores') {
+    const s = _emailSuperData[idx];
+    if (s) _previewList.push({ v: { label: s.label, correo: s.correo, correo_supervisor: s.correo }, html: buildSupervisorEmailHTML(s.label, s.vendedores) });
+  } else {
+    const vcmData = await loadVCMEmailData();
+    const v = _emailVendorData[idx];
+    if (v) {
+      const { clientes, totals } = await buildVCMPayload(vcmData, v.vendedor, computeVendProjections()[v.vendedor]);
+      _previewList.push({ v, html: buildEmailHTML(v.vendedor, totals, clientes) });
+    }
+  }
+  if (_previewList.length > 0) {
+    _previewIdx = 0; renderPreview();
+    document.getElementById('emailPreviewModal').style.display = 'flex';
+  }
+  document.getElementById('emailStatus').textContent = '';
+}
+
+async function sendEmailSingle(mode, idx) {
+  const testMode = document.getElementById('testModeToggle')?.checked;
+  const testEmail = 'jgarcia@cofersa.cr';
+  document.getElementById('emailStatus').textContent = '⏳ Enviando...';
+  try {
+    let payload;
+    if (mode === 'supervisores') {
+      const s = _emailSuperData[idx];
+      const html = buildSupervisorEmailHTML(s.label, s.vendedores);
+      payload = [{ vendedor: s.label, correo: testMode ? testEmail : s.correo, correo_supervisor: testMode ? testEmail : s.correo, html_override: html }];
+    } else {
+      const vcmData = await loadVCMEmailData();
+      const v = _emailVendorData[idx];
+      const { clientes, totals } = await buildVCMPayload(vcmData, v.vendedor, computeVendProjections()[v.vendedor]);
+      payload = [{ vendedor: v.vendedor, correo: testMode ? testEmail : v.correo, correo_supervisor: testMode ? testEmail : v.correo_supervisor, clientes, totals }];
+    }
+    const res = await fetch(getEdgeURL(), { method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }, body: JSON.stringify({ vendedores: payload }) });
+    const result = await res.json();
+    if (result.ok && result.results?.[0]?.status === 'sent') {
+      document.getElementById('emailStatus').innerHTML = `<span style="color:var(--teal)">✅ Enviado a ${payload[0].correo}${testMode ? ' (modo prueba)' : ''}</span>`;
+    } else {
+      document.getElementById('emailStatus').innerHTML = `<span style="color:var(--red)">❌ Error: ${result.results?.[0]?.error || result.error}</span>`;
+    }
+  } catch(e) {
+    document.getElementById('emailStatus').innerHTML = `<span style="color:var(--red)">❌ ${e.message}</span>`;
+  }
 }
 
 function selectAllEmails(check) { document.querySelectorAll('.email-cb').forEach(cb => cb.checked = check); updateEmailCount(); }
