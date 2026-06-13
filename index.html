@@ -711,6 +711,7 @@ body {
           <tr>
             <th>Zona de Venta</th>
             <th class="num">Hist Q3 2025 (¢)</th>
+            <th class="num">Hist Q3 2024 (¢)</th>
             <th class="num">Hist Q2 2024 (¢)</th>
             <th class="num">Prom Mensual 2025 (¢)</th>
             <th class="num">Meta Jul 2026 (¢)</th>
@@ -745,6 +746,7 @@ body {
           <tr>
             <th>Marca</th>
             <th class="num">Hist Q3 2025 (¢)</th>
+            <th class="num">Hist Q3 2024 (¢)</th>
             <th class="num">Hist Q2 2024 (¢)</th>
             <th class="num">Meta Jul 2026 (¢)</th>
             <th class="num">Meta Ago 2026 (¢)</th>
@@ -790,6 +792,7 @@ body {
           <tr>
             <th style="min-width:280px">Zona / Vendedor</th>
             <th class="num">Hist Q3 2025 (¢)</th>
+            <th class="num">Hist Q3 2024 (¢)</th>
             <th class="num">Hist Q2 2024 (¢)</th>
             <th class="num">Meta Jul 2026 (¢)</th>
             <th class="num">Meta Ago 2026 (¢)</th>
@@ -823,6 +826,7 @@ body {
             <th>#</th>
             <th>Cliente</th>
             <th class="num">Hist Q3 2025 (¢)</th>
+            <th class="num">Hist Q3 2024 (¢)</th>
             <th class="num">Hist Q2 2024 (¢)</th>
             <th class="num">Meta Jul 2026 (¢)</th>
             <th class="num">Meta Ago 2026 (¢)</th>
@@ -1083,6 +1087,7 @@ body {
           <tr>
             <th style="min-width:280px">Vendedor / Marca</th>
             <th class="num">Hist Q3 2025 (¢)</th>
+            <th class="num">Hist Q3 2024 (¢)</th>
             <th class="num">Hist Q2 2024 (¢)</th>
             <th class="num">Meta Jul 2026 (¢)</th>
             <th class="num">Meta Ago 2026 (¢)</th>
@@ -1119,6 +1124,7 @@ body {
           <tr>
             <th style="min-width:280px">Vendedor / Cliente</th>
             <th class="num">Hist Q3 2025 (¢)</th>
+            <th class="num">Hist Q3 2024 (¢)</th>
             <th class="num">Hist Q2 2024 (¢)</th>
             <th class="num">Meta Jul 2026 (¢)</th>
             <th class="num">Meta Ago 2026 (¢)</th>
@@ -1154,6 +1160,7 @@ body {
           <tr>
             <th style="min-width:300px">Zona / Cliente / Marca</th>
             <th class="num">Hist Q3 2025 (¢)</th>
+            <th class="num">Hist Q3 2024 (¢)</th>
             <th class="num">Meta Jul 2026 (¢)</th>
             <th class="num">Meta Ago 2026 (¢)</th>
             <th class="num">Meta Sep 2026 (¢)</th>
@@ -1967,6 +1974,7 @@ function renderVCMTable(vendProj) {
     html += `<tr class="vp-vendor-row" onclick="toggleVCMVendedor(${vidx})">
       <td><span class="vp-toggle" id="vcmvtog_${vidx}">+</span><strong>${label}</strong></td>
       <td class="num">${fmt(x.histQ2_2025)}</td>
+      <td class="num">${fmt(x.histQ2_2024)}</td>
       <td class="num">${fmt(x.proj[0])}</td>
       <td class="num">${fmt(x.proj[1])}</td>
       <td class="num">${fmt(x.proj[2])}</td>
@@ -1999,15 +2007,17 @@ function renderVCMTable(vendProj) {
         const safeVend  = x.v.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
         const safeAlias = alias.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 
+        const cH24    = cd.histQ2_2024||0;
         html += `<tr class="vp-port-row p2 hidden" data-vcm-vend="${vidx}" onclick="toggleVCMCliente('${rowId}','${safeVend}','${safeAlias}')">
           <td style="padding-left:28px"><span class="vp-toggle" id="${rowId}_tog">+</span>🏪 ${alias}</td>
           <td class="num">${fmt(cH25)}</td>
+          <td class="num">${fmt(cH24)}</td>
           <td class="num">${fmt(cAbr)}</td><td class="num">${fmt(cMay)}</td><td class="num">${fmt(cJun)}</td>
           <td class="num" style="font-weight:600">${fmt(cTot)}</td>
           <td class="num ${cVar>=0?'pos':'neg'}">${fmtPct(cVar)}</td>
         </tr>
         <tr class="vp-port-row hidden" data-vcm-vend="${vidx}" data-vcm-marca-row="${rowId}" style="display:none !important">
-          <td colspan="7" style="padding:0">
+          <td colspan="8" style="padding:0">
             <div id="${rowId}_content" style="padding:6px 28px 6px 52px;background:var(--bg3)">
               <span style="color:var(--text3);font-size:12px">↑ Clic en el cliente para cargar sus marcas</span>
             </div>
@@ -2021,6 +2031,7 @@ function renderVCMTable(vendProj) {
   document.getElementById('vcmFoot').innerHTML = `<tr class="total-row">
     <td><strong>TOTAL GENERAL</strong></td>
     <td class="num"><strong>${fmt(grandH25)}</strong></td>
+    <td class="num"><strong>${fmt(sorted.reduce((s,x)=>s+x.histQ2_2024,0))}</strong></td>
     <td class="num"><strong>${fmt(sorted.reduce((s,x)=>s+x.proj[0],0))}</strong></td>
     <td class="num"><strong>${fmt(sorted.reduce((s,x)=>s+x.proj[1],0))}</strong></td>
     <td class="num"><strong>${fmt(sorted.reduce((s,x)=>s+x.proj[2],0))}</strong></td>
@@ -2095,6 +2106,7 @@ async function toggleVCMCliente(rowId, vendedor, alias) {
 
   const table = marcas.map(m => {
     const h25  = Number(m.hist_q3_2025)||0;
+    const h24  = Number(m.hist_q3_2024)||0;
     const tot  = Number(m.meta_q3)||0;
     const varP = h25>0?((tot-h25)/h25*100):0;
     const pColor = PORT_COLORS_MAP[m.portafolio] || 'var(--text3)';
@@ -2105,6 +2117,7 @@ async function toggleVCMCliente(rowId, vendedor, alias) {
         <span style="font-size:10px;color:var(--text3);margin-left:4px">${m.portafolio}</span>
       </td>
       <td style="text-align:right;padding:5px 8px;font-size:12px">${fmt(h25)}</td>
+      <td style="text-align:right;padding:5px 8px;font-size:12px">${fmt(h24)}</td>
       <td style="text-align:right;padding:5px 8px;font-size:12px">${fmt(Number(m.m_jul25)||0)}</td>
       <td style="text-align:right;padding:5px 8px;font-size:12px">${fmt(Number(m.m_ago25)||0)}</td>
       <td style="text-align:right;padding:5px 8px;font-size:12px">${fmt(Number(m.m_sep25)||0)}</td>
