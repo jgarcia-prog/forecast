@@ -4478,28 +4478,13 @@ VENDEDORES ALERTA: ${lowVend.map(v=>`${v.n}:${v.hist>0?((v.meta-v.hist)/v.hist*1
 TOP MARCAS: ${topMarcas.map(m=>`${m.m}(${m.port||'?'}):¢${(m.meta/1e6).toFixed(1)}M`).join(', ')}
 TOP CLIENTES: ${topClientes.map(c=>`${c.n.substring(0,30)}:¢${(c.meta/1e6).toFixed(1)}M`).join(', ')}`;
 
-  const prompt = `Sos el analista comercial de COFERSA Costa Rica. Con estos datos Q3 2026, generá un resumen ejecutivo estructurado en JSON estricto (sin markdown, sin backticks, solo el objeto JSON):
+  const prompt = `Eres el analista comercial de COFERSA Costa Rica. Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional, sin markdown, sin explicaciones antes o después.
 
+Datos Q3 2026:
 ${ctx}
 
-Devolvé EXACTAMENTE este JSON (completa cada campo con análisis real basado en los datos):
-{
-  "resumen": "2 oraciones ejecutivas sobre la situación general del Q3 2026",
-  "vendedores": {
-    "top": [{"nombre":"...","insight":"por qué destaca"}],
-    "alerta": [{"nombre":"...","riesgo":"qué riesgo representa"}]
-  },
-  "marcas": {
-    "lideres": [{"marca":"...","portafolio":"...","insight":"..."}],
-    "oportunidad": [{"marca":"...","accion":"qué hacer con esta marca"}]
-  },
-  "clientes": {
-    "top": [{"cliente":"...","insight":"..."}],
-    "concentracion": "análisis de concentración del top 6 vs total"
-  },
-  "fortalezas": ["fortaleza 1 con dato numérico","fortaleza 2","fortaleza 3"],
-  "oportunidades": ["oportunidad 1 con acción concreta","oportunidad 2","oportunidad 3"]
-}`;
+Responde SOLO con este JSON (llena cada campo con análisis real):
+{"resumen":"2 oraciones ejecutivas sobre Q3 2026","vendedores":{"top":[{"nombre":"...","insight":"por qué destaca en ventas"}],"alerta":[{"nombre":"...","riesgo":"qué riesgo representa"}]},"marcas":{"lideres":[{"marca":"...","portafolio":"...","insight":"..."}],"oportunidad":[{"marca":"...","accion":"acción concreta"}]},"clientes":{"top":[{"cliente":"...","insight":"..."}],"concentracion":"análisis breve del top 6 vs total"},"fortalezas":["fortaleza con dato numérico","fortaleza 2","fortaleza 3"],"oportunidades":["oportunidad con acción concreta","oportunidad 2","oportunidad 3"]}`;
 
   document.getElementById('aiWelcome').style.display = 'none';
   document.getElementById('aiResponse').style.display = 'none';
@@ -4510,8 +4495,28 @@ Devolvé EXACTAMENTE este JSON (completa cada campo con análisis real basado en
   try {
     const text = await callAIProxy(prompt, 1500);
 
+    // Robust JSON extraction — handles markdown fences, extra text, etc.
     let d;
-    try { d = JSON.parse(text.replace(/```json|```/g,'')); } catch(e) { throw new Error('Error parseando respuesta'); }
+    try {
+      // Try 1: direct parse
+      d = JSON.parse(text);
+    } catch(_) {
+      try {
+        // Try 2: extract JSON block between first { and last }
+        const start = text.indexOf('{');
+        const end   = text.lastIndexOf('}');
+        if (start !== -1 && end !== -1) d = JSON.parse(text.slice(start, end + 1));
+        else throw new Error('no JSON found');
+      } catch(_2) {
+        // Try 3: strip markdown fences
+        try {
+          const clean = text.replace(/```json|```/g,'').trim();
+          d = JSON.parse(clean);
+        } catch(_3) {
+          throw new Error('Respuesta no es JSON válido: ' + text.slice(0,120));
+        }
+      }
+    }
 
     const card = (icon,title,content,bg='var(--bg3)',border='var(--border)') =>
       `<div style="background:${bg};border:1px solid ${border};border-radius:10px;padding:14px 16px;margin-bottom:10px">
