@@ -577,14 +577,31 @@ body {
 <div id="confirmModal">
   <div id="confirmBox">
     <div style="font-size:36px;margin-bottom:12px">🔄</div>
-    <div style="font-family:var(--font-display);font-size:17px;font-weight:700;margin-bottom:8px">Depurar datos cargados</div>
+    <div style="font-family:var(--font-display);font-size:17px;font-weight:700;margin-bottom:8px">Depurar ajustes</div>
     <div style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:20px">
-      Esto va a <strong>eliminar todos los ajustes</strong> y restaurar los datos al estado original embebido en el archivo.<br><br>
-      <span style="font-size:12px;color:var(--text3)">Los filtros, sliders y ajustes manuales se van a resetear.</span>
+      Esto va a <strong>eliminar todos los ajustes manuales</strong> y resetear sliders, filtros y reasignaciones.<br><br>
+      <span style="font-size:12px;color:var(--text3)">Los datos cargados desde Supabase se conservan.</span>
     </div>
     <div style="display:flex;gap:10px;justify-content:center">
       <button class="btn btn-outline" onclick="closeConfirm()" style="flex:1;max-width:140px">Cancelar</button>
       <button class="btn" onclick="doReset()" style="flex:1;max-width:140px;background:var(--red);color:#fff">Sí, depurar</button>
+    </div>
+  </div>
+</div>
+
+<div id="limpiarModal" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px);align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border-radius:16px;padding:32px;max-width:380px;width:90%;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,0.3)">
+    <div style="width:56px;height:56px;border-radius:14px;background:#fef2f2;display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
+      <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#b91c1c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+    </div>
+    <div style="font-family:var(--font-display);font-size:17px;font-weight:700;margin-bottom:8px;color:var(--text)">Limpiar datos cargados</div>
+    <div style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:20px">
+      Esto va a <strong>eliminar todos los datos cargados</strong> (Supabase o Excel) y dejar el dashboard vacío.<br><br>
+      <span style="font-size:12px;color:var(--text3)">Los ajustes manuales se conservan. Deberás volver a cargar desde ⚡ Supabase.</span>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button class="btn btn-outline" onclick="document.getElementById('limpiarModal').style.display='none'" style="flex:1;max-width:140px">Cancelar</button>
+      <button class="btn" onclick="doLimpiar()" style="flex:1;max-width:140px;background:#b91c1c;color:#fff">Sí, limpiar</button>
     </div>
   </div>
 </div>
@@ -5060,7 +5077,11 @@ function renderReasigList() {
 }
 
 function clearSupabaseData() {
-  if (!confirm('¿Limpiar todos los datos cargados (Supabase o Excel)?\n\nEl dashboard quedará vacío y deberás volver a cargar desde ⚡ Supabase.\n\nLos ajustes manuales se conservan.')) return;
+  document.getElementById('limpiarModal').style.display = 'flex';
+}
+
+function doLimpiar() {
+  document.getElementById('limpiarModal').style.display = 'none';
 
   // Reset to completely empty RAW_DATA
   RAW_DATA.vendedores      = {};
