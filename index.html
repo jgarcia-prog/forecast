@@ -3038,7 +3038,7 @@ async function openEmailModal() {
 function renderSupervisorList(list) {
   document.getElementById('emailVendorList').innerHTML = list.map((s, i) => {
     return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg)">
-      <input type="checkbox" class="email-cb" data-idx="${i}" data-mode="supervisores" checked style="width:15px;height:15px;accent-color:#7c3aed;flex-shrink:0" onchange="updateEmailCount()">
+      <input type="checkbox" class="email-cb" data-idx="${i}" data-mode="supervisores" checked style="width:15px;height:15px;accent-color:#009ee3;flex-shrink:0" onchange="updateEmailCount()">
       <div style="flex:1;cursor:pointer" onclick="this.closest('div').querySelector('input').click()">
         <div style="font-size:13px;font-weight:600;color:var(--text)">👥 ${s.label}</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">
@@ -3185,7 +3185,7 @@ function renderEmailList(list) {
   document.getElementById('emailVendorList').innerHTML = list.map((v,i) => {
     const pc = PC[v.portafolio]||'#6b7280';
     return `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg)">
-      <input type="checkbox" class="email-cb" data-idx="${i}" checked style="width:15px;height:15px;accent-color:#7c3aed;flex-shrink:0" onchange="updateEmailCount()">
+      <input type="checkbox" class="email-cb" data-idx="${i}" checked style="width:15px;height:15px;accent-color:#009ee3;flex-shrink:0" onchange="updateEmailCount()">
       <div style="flex:1;cursor:pointer" onclick="this.closest('div').querySelector('input').click()">
         <div style="font-size:13px;font-weight:600;color:var(--text)">${v.label} <span style="font-size:10px;font-weight:600;color:${pc};background:${pc}18;padding:1px 6px;border-radius:4px;border:1px solid ${pc}40">${v.portafolio}</span></div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">✉️ ${v.correo} &nbsp;·&nbsp; 👤 ${v.supervisor} (${v.correo_supervisor})</div>
