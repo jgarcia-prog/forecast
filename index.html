@@ -1437,18 +1437,27 @@ function getProyeccion(d) {
 }
 
 function getMarcaAdjFactor() {
-  // If no marca adjustments active, return neutral factor
-  const hasAny = Object.values(state.adjustments.marcas).some(v => v !== 0);
-  if (!hasAny) return [1, 1, 1];
-  // Ratio: sum(adjusted marca projections) / sum(base marca projections) per month
-  let raw   = [0, 0, 0];
-  let adjd  = [0, 0, 0];
+  const hasAdj = Object.values(state.adjustments.marcas).some(v => v !== 0);
+  const hasOv  = Object.keys(state.marcaOverrides).length > 0;
+  if (!hasAdj && !hasOv) return [1, 1, 1];
+
+  let raw  = [0, 0, 0];
+  let adjd = [0, 0, 0];
   Object.entries(RAW_DATA.marcas).forEach(([marca, d]) => {
     const base = getProyeccion(d);
-    const a = 1 + (state.adjustments.marcas[marca] || 0) / 100;
+    // Use override % if set, else use adjustments.marcas %
+    let a;
+    if (state.marcaOverrides[marca]) {
+      const ov = state.marcaOverrides[marca];
+      const baseTotal = base.reduce((x,y)=>x+y,0);
+      const ovTotal   = ov.reduce((x,y)=>x+y,0);
+      a = baseTotal > 0 ? ovTotal / baseTotal : 1;
+    } else {
+      a = 1 + (state.adjustments.marcas[marca] || 0) / 100;
+    }
     base.forEach((v, i) => { raw[i] += v; adjd[i] += v * a; });
   });
-  return [0, 1, 2].map(i => raw[i] > 0 ? adjd[i] / raw[i] : 1);
+  return [0,1,2].map(i => raw[i] > 0 ? adjd[i] / raw[i] : 1);
 }
 
 function computeVendProjections() {
@@ -1496,62 +1505,46 @@ function computeVendProjections() {
 }
 
 function computeMarcaProjections() {
-  // Step 1: raw projection per marca with adjustments and overrides
   const raw = {};
   Object.entries(RAW_DATA.marcas).forEach(([marca, d]) => {
-    const adj = (1 + (state.adjustments.marcas[marca] || 0) / 100);
-    const baseProy = getProyeccion(d).map(v => v * adj);
-    const ov = state.marcaOverrides[marca];
+    const base = getProyeccion(d);
+    let proj;
+    if (state.marcaOverrides[marca]) {
+      // Override: use absolute values directly (per-brand scale)
+      const ov = state.marcaOverrides[marca];
+      const baseTotal = base.reduce((a,b)=>a+b,0);
+      const ovTotal   = ov.reduce((a,b)=>a+b,0);
+      // Scale each month by the per-brand ratio
+      const factor = baseTotal > 0 ? ovTotal / baseTotal : 1;
+      proj = base.map(v => v * factor);
+    } else {
+      const adj = 1 + (state.adjustments.marcas[marca] || 0) / 100;
+      proj = base.map(v => v * adj);
+    }
     raw[marca] = {
-      proj: ov ? [...ov] : baseProy,
+      proj,
       histQ2_2025: getHistQ2(d.historico, 2025),
       histQ2_2024: getHistQ2(d.historico, 2024),
-      hasOverride: !!ov,
-      portafolio: RAW_DATA.marcas[marca]?.portafolio || ''
+      hasOverride: !!state.marcaOverrides[marca],
+      portafolio: d.portafolio || ''
     };
   });
 
-  const vendProj = computeVendProjections();
+  // Scale all brands so their grand total matches vendor grand total
+  // (which already incorporates getMarcaAdjFactor)
+  const vendProj  = computeVendProjections();
   const vendGrand = [0,1,2].map(i => Object.values(vendProj).reduce((s,v)=>s+v.proj[i],0));
-  const hasAnyOverride = Object.keys(state.marcaOverrides).length > 0;
-
-  if (!hasAnyOverride) {
-    // No overrides: scale all brands proportionally to match vendor totals
-    const marcaGrand = [0,1,2].map(i => Object.values(raw).reduce((s,v)=>s+v.proj[i],0));
-    const result = {};
-    Object.entries(raw).forEach(([marca, d]) => {
-      result[marca] = {
-        proj: d.proj.map((v,i) => marcaGrand[i] > 0 ? v * vendGrand[i] / marcaGrand[i] : 0),
-        histQ2_2025: d.histQ2_2025,
-        histQ2_2024: d.histQ2_2024,
-        hasOverride: false,
-        portafolio: d.portafolio
-      };
-    });
-    return result;
-  }
-
-  // With overrides: overridden brands keep exact values,
-  // non-overridden brands fill remainder proportionally
-  const ovGrand    = [0,1,2].map(i => Object.values(raw).filter(d=>d.hasOverride).reduce((s,d)=>s+d.proj[i],0));
-  const nonOvGrand = [0,1,2].map(i => Object.values(raw).filter(d=>!d.hasOverride).reduce((s,d)=>s+d.proj[i],0));
+  const marcaGrand= [0,1,2].map(i => Object.values(raw).reduce((s,v)=>s+v.proj[i],0));
 
   const result = {};
   Object.entries(raw).forEach(([marca, d]) => {
-    if (d.hasOverride) {
-      // Keep override values exactly as set
-      result[marca] = { ...d };
-    } else {
-      // Scale non-overridden brands to fill the remainder after overrides
-      const remainder = [0,1,2].map(i => Math.max(0, vendGrand[i] - ovGrand[i]));
-      result[marca] = {
-        proj: d.proj.map((v,i) => nonOvGrand[i] > 0 ? v * remainder[i] / nonOvGrand[i] : 0),
-        histQ2_2025: d.histQ2_2025,
-        histQ2_2024: d.histQ2_2024,
-        hasOverride: false,
-        portafolio: d.portafolio
-      };
-    }
+    result[marca] = {
+      proj: d.proj.map((v,i) => marcaGrand[i] > 0 ? v * vendGrand[i] / marcaGrand[i] : 0),
+      histQ2_2025: d.histQ2_2025,
+      histQ2_2024: d.histQ2_2024,
+      hasOverride: d.hasOverride,
+      portafolio: d.portafolio
+    };
   });
   return result;
 }
@@ -5251,21 +5244,28 @@ function editMarcaCell(td, marca, monthIdx) {
     const newVal = parseFloat(input.value);
     if (isNaN(newVal) || newVal < 0) { render(); return; }
 
-    const ov = state.marcaOverrides[marca]
-      ? [...state.marcaOverrides[marca]]
-      : [...cur.proj];
+    // Get base (unscaled) projection for ratio calculation
+    const marcaData = RAW_DATA.marcas[marca];
+    const baseProy = marcaData ? getProyeccion(marcaData) : [0,0,0];
+    const baseTotal = baseProy.reduce((a,b)=>a+b,0);
 
+    let newProj;
     if (monthIdx === 3) {
-      // Distribute total proportionally to months
+      // Distribute total proportionally
+      const ov = state.marcaOverrides[marca] || [...(cur?.proj || baseProy)];
       const oldTotal = ov.reduce((a,b)=>a+b,0);
-      if (oldTotal > 0) {
-        state.marcaOverrides[marca] = ov.map(v => v * newVal / oldTotal);
-      } else {
-        state.marcaOverrides[marca] = [newVal/3, newVal/3, newVal/3];
-      }
+      newProj = oldTotal > 0 ? ov.map(v => v * newVal / oldTotal) : [newVal/3, newVal/3, newVal/3];
     } else {
+      const ov = state.marcaOverrides[marca] ? [...state.marcaOverrides[marca]] : [...(cur?.proj || baseProy)];
       ov[monthIdx] = newVal;
-      state.marcaOverrides[marca] = ov;
+      newProj = ov;
+    }
+    state.marcaOverrides[marca] = newProj;
+
+    // Sync to adjustments.marcas as % so getMarcaAdjFactor propagates to vendors
+    const newTotal = newProj.reduce((a,b)=>a+b,0);
+    if (baseTotal > 0) {
+      state.adjustments.marcas[marca] = (newTotal / baseTotal - 1) * 100;
     }
     render();
     saveState();
@@ -5281,11 +5281,14 @@ function editMarcaCell(td, marca, monthIdx) {
 function clearMarcaOverride(marca, event) {
   event.stopPropagation();
   delete state.marcaOverrides[marca];
+  delete state.adjustments.marcas[marca];
   render();
   saveState();
 }
 
 function clearAllMarcaOverrides() {
+  // Clear overrides AND their synced % adjustments
+  Object.keys(state.marcaOverrides).forEach(m => { delete state.adjustments.marcas[m]; });
   state.marcaOverrides = {};
   render();
   saveState();
