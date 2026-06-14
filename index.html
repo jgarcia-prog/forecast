@@ -1508,15 +1508,11 @@ function computeMarcaProjections() {
   const raw = {};
   Object.entries(RAW_DATA.marcas).forEach(([marca, d]) => {
     const base = getProyeccion(d);
+    const ov = state.marcaOverrides[marca];
     let proj;
-    if (state.marcaOverrides[marca]) {
-      // Override: use absolute values directly (per-brand scale)
-      const ov = state.marcaOverrides[marca];
-      const baseTotal = base.reduce((a,b)=>a+b,0);
-      const ovTotal   = ov.reduce((a,b)=>a+b,0);
-      // Scale each month by the per-brand ratio
-      const factor = baseTotal > 0 ? ovTotal / baseTotal : 1;
-      proj = base.map(v => v * factor);
+    if (ov) {
+      // Use exact override values — do NOT rescale these
+      proj = [...ov];
     } else {
       const adj = 1 + (state.adjustments.marcas[marca] || 0) / 100;
       proj = base.map(v => v * adj);
@@ -1525,26 +1521,54 @@ function computeMarcaProjections() {
       proj,
       histQ2_2025: getHistQ2(d.historico, 2025),
       histQ2_2024: getHistQ2(d.historico, 2024),
-      hasOverride: !!state.marcaOverrides[marca],
+      hasOverride: !!ov,
       portafolio: d.portafolio || ''
     };
   });
 
-  // Scale all brands so their grand total matches vendor grand total
-  // (which already incorporates getMarcaAdjFactor)
-  const vendProj  = computeVendProjections();
-  const vendGrand = [0,1,2].map(i => Object.values(vendProj).reduce((s,v)=>s+v.proj[i],0));
-  const marcaGrand= [0,1,2].map(i => Object.values(raw).reduce((s,v)=>s+v.proj[i],0));
+  const vendProj   = computeVendProjections();
+  const vendGrand  = [0,1,2].map(i => Object.values(vendProj).reduce((s,v)=>s+v.proj[i],0));
+
+  const hasAnyOv   = Object.keys(state.marcaOverrides).length > 0;
+
+  if (!hasAnyOv) {
+    // No overrides — scale all brands to match vendor total (original behavior)
+    const marcaGrand = [0,1,2].map(i => Object.values(raw).reduce((s,v)=>s+v.proj[i],0));
+    const result = {};
+    Object.entries(raw).forEach(([marca, d]) => {
+      result[marca] = {
+        proj: d.proj.map((v,i) => marcaGrand[i] > 0 ? v * vendGrand[i] / marcaGrand[i] : 0),
+        histQ2_2025: d.histQ2_2025,
+        histQ2_2024: d.histQ2_2024,
+        hasOverride: false,
+        portafolio: d.portafolio
+      };
+    });
+    return result;
+  }
+
+  // With overrides: overridden brands = exact values, others fill the remainder
+  const ovGrand    = [0,1,2].map(i =>
+    Object.values(raw).filter(d => d.hasOverride).reduce((s,d) => s + d.proj[i], 0));
+  const nonOvRaw   = [0,1,2].map(i =>
+    Object.values(raw).filter(d => !d.hasOverride).reduce((s,d) => s + d.proj[i], 0));
 
   const result = {};
   Object.entries(raw).forEach(([marca, d]) => {
-    result[marca] = {
-      proj: d.proj.map((v,i) => marcaGrand[i] > 0 ? v * vendGrand[i] / marcaGrand[i] : 0),
-      histQ2_2025: d.histQ2_2025,
-      histQ2_2024: d.histQ2_2024,
-      hasOverride: d.hasOverride,
-      portafolio: d.portafolio
-    };
+    if (d.hasOverride) {
+      // Exact — no scaling
+      result[marca] = { ...d };
+    } else {
+      // Fill remainder proportionally
+      const remainder = [0,1,2].map(i => Math.max(0, vendGrand[i] - ovGrand[i]));
+      result[marca] = {
+        proj: d.proj.map((v,i) => nonOvRaw[i] > 0 ? v * remainder[i] / nonOvRaw[i] : 0),
+        histQ2_2025: d.histQ2_2025,
+        histQ2_2024: d.histQ2_2024,
+        hasOverride: false,
+        portafolio: d.portafolio
+      };
+    }
   });
   return result;
 }
