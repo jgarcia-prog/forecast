@@ -5014,22 +5014,35 @@ function renderReasigList() {
 }
 
 function clearSupabaseData() {
-  if (!confirm('¿Limpiar los datos cargados desde Supabase y volver a los datos originales del archivo?\n\nLos ajustes manuales se conservan.')) return;
+  if (!confirm('¿Limpiar todos los datos cargados (Supabase o Excel)?\n\nEl dashboard quedará vacío y deberás volver a cargar desde ⚡ Supabase.\n\nLos ajustes manuales se conservan.')) return;
 
-  // Restore original embedded data
-  Object.assign(RAW_DATA, JSON.parse(JSON.stringify(ORIGINAL_RAW_DATA)));
-  window._rawDataModified = false;
-  window._vcmEmailFullData = null; // clear VCM cache too
+  // Reset to completely empty RAW_DATA
+  RAW_DATA.vendedores      = {};
+  RAW_DATA.marcas          = {};
+  RAW_DATA.portafolios     = {};
+  RAW_DATA.clientes        = {};
+  RAW_DATA.vendedorClientes = {};
+  RAW_DATA.vendedorPortafolio = {};
+  RAW_DATA.monthly_total   = Array(30).fill(0);
+  RAW_DATA.presupuesto_q2  = 0;
+  RAW_DATA.months          = Array(30).fill('');
+  window._rawDataModified  = false;
+  window._vcmEmailFullData = null;
+
+  // Clear localStorage data but keep adjustments
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    delete saved.RAW_DATA;
+    delete saved._rawDataModified;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+  } catch(e) {}
 
   // Update status bar
   const statusEl = document.getElementById('dataStatus');
-  if (statusEl) statusEl.textContent = '● Datos originales (sin Supabase)';
-
-  // Re-apply reasignaciones if any
-  if (state.reasignaciones?.length) rebuildVendedorClientes();
+  if (statusEl) statusEl.textContent = '○ Sin datos — cargá desde ⚡ Supabase';
 
   render();
-  showToast('✅ Datos limpiados — usando datos originales del archivo');
+  showToast('🗑️ Datos limpiados — cargá desde ⚡ Supabase');
 }
 
 function showToast(msg) {
