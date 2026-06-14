@@ -3221,7 +3221,7 @@ function buildSupervisorEmailHTML(supervisor, vendedoresData) {
   </td></tr>
   <tr><td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb">
     <div style="font-size:12px;color:#9ca3af;line-height:1.6">
-      Quedo atento ante cualquier consulta y apoyo.<br><br><strong>Jorge García</strong><br><span style="color:#6b7280">Gerente Comercial · COFERSA</span><br><a href="mailto:jgarcia@cofersa.cr" style="color:#009ee3;text-decoration:none">jgarcia@cofersa.cr</a>
+      Quedo atento ante cualquier consulta y apoyo.<br>Saludos cordiales,<br><strong>Jorge García</strong>
     </div>
   </td></tr>
 </table></body></html>`;
@@ -3357,7 +3357,7 @@ function buildEmailHTML(vendedor, totals, clientes) {
     }).join('')}
   </tr>
 </table>
-</td></tr><tr><td style="padding:0 32px 32px"><div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">Desglose por Cliente y Marca</div><table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #e5e7eb"><thead><tr style="background:#009ee3"><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:left">Cliente / Marca</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:right">Meta Jul</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:right">Meta Ago</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:right">Meta Sep</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:right">Total Q3</th></tr></thead><tbody>${rows}</tbody></table></td></tr><tr><td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb"><div style="font-size:12px;color:#9ca3af;line-height:1.6">Correo generado por <strong>Forecast COFERSA</strong> \u2014 Metas basadas en tendencia hist\u00f3rica + estacionalidad Q3 2024\u20132025.<br>Consultas: <a href="mailto:jgarcia@cofersa.cr" style="color:#1e40af">jgarcia@cofersa.cr</a></div></td></tr></table></body></html>`;
+</td></tr><tr><td style="padding:0 32px 32px"><div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">Desglose por Cliente y Marca</div><table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #e5e7eb"><thead><tr style="background:#009ee3"><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:left">Cliente / Marca</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:right">Meta Jul</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:right">Meta Ago</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:right">Meta Sep</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:right">Total Q3</th></tr></thead><tbody>${rows}</tbody></table></td></tr><tr><td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb"><div style="font-size:12px;color:#374151;line-height:1.9">Quedo atento ante cualquier consulta y apoyo.<br>Saludos cordiales,<br><strong>Jorge Garc�a</strong></div></td></tr></table></body></html>`;
 }
 
 async function buildVCMPayload(vcmData, vendedor, vendProjData) {
