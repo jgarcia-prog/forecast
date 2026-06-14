@@ -509,7 +509,8 @@ body {
     <button class="btn btn-outline" id="supabaseBtn" onclick="loadFromSupabase()" title="Cargar datos desde Supabase" style="border-color:#3ecf8e;color:#3ecf8e">
       <span id="supabaseBtnText">⚡ Supabase</span>
     </button>
-    <button class="btn btn-outline btn-reset" onclick="resetData()" title="Limpiar ajustes y volver a los datos originales">🔄 Depurar datos</button>
+    <button class="btn btn-outline btn-reset" onclick="resetData()" title="Limpiar ajustes y volver a los datos originales">🔄 Depurar ajustes</button>
+    <button class="btn btn-outline" onclick="clearSupabaseData()" title="Limpiar datos cargados desde Supabase y volver a los datos embebidos" style="border-color:#f59e0b;color:#b45309">🗑️ Limpiar datos</button>
     <button class="btn btn-ai" onclick="openAIAnalysis()">🤖 Análisis AI</button>
     <button class="btn btn-gold" onclick="exportExcel()">↓ Exportar Excel</button>
     <button class="btn btn-save" id="saveBtn" onclick="saveState()" title="Guardar estado actual">💾 Guardar</button>
@@ -5010,6 +5011,39 @@ function renderReasigList() {
       </div>
     </div>`;
   }).join('');
+}
+
+function clearSupabaseData() {
+  if (!confirm('¿Limpiar los datos cargados desde Supabase y volver a los datos originales del archivo?\n\nLos ajustes manuales se conservan.')) return;
+
+  // Restore original embedded data
+  Object.assign(RAW_DATA, JSON.parse(JSON.stringify(ORIGINAL_RAW_DATA)));
+  window._rawDataModified = false;
+  window._vcmEmailFullData = null; // clear VCM cache too
+
+  // Update status bar
+  const statusEl = document.getElementById('dataStatus');
+  if (statusEl) statusEl.textContent = '● Datos originales (sin Supabase)';
+
+  // Re-apply reasignaciones if any
+  if (state.reasignaciones?.length) rebuildVendedorClientes();
+
+  render();
+  showToast('✅ Datos limpiados — usando datos originales del archivo');
+}
+
+function showToast(msg) {
+  let t = document.getElementById('toastMsg');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toastMsg';
+    t.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#1e3a8a;color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,0.25);transition:opacity 0.3s';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.style.opacity = '0'; }, 3000);
 }
 
 function resetData() {
