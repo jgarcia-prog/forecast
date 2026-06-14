@@ -652,6 +652,7 @@ body {
 
       <!-- Quick filter pills -->
       <div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap" id="aiPills">
+        <button class="ai-pill" style="background:linear-gradient(135deg,#009ee3,#1e3a8a);color:#fff;border-color:transparent;font-weight:700" onclick="runAIResumen(this)">📋 Resumen Ejecutivo</button>
         <button class="ai-pill active" onclick="runAI('completo',this)">🔍 Análisis Completo</button>
         <button class="ai-pill" onclick="runAI('fortalezas',this)">💪 Fortalezas</button>
         <button class="ai-pill" onclick="runAI('oportunidades',this)">🚀 Oportunidades</button>
@@ -4459,6 +4460,142 @@ ${ctx}`,
   tendencia: (ctx) => `Experto tendencias COFERSA. Analizá estacionalidad, picos y valles de los últimos meses, compará Q2 2024-2025-2026 y evaluá confiabilidad de la proyección. Markdown, ### 📈 Tendencia.
 ${ctx}`
 };
+
+async function runAIResumen(btn) {
+  document.querySelectorAll('.ai-pill').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+
+  const vendProj  = computeVendProjections();
+  const marcaProj = computeMarcaProjections();
+  const clientProj = computeClientProjections();
+  const totalMeta = getTotalProjection(vendProj);
+  const totalHist = Object.values(vendProj).reduce((s,v)=>s+v.histQ2_2025,0);
+
+  // Top 6 vendedores
+  const topVend = Object.entries(vendProj)
+    .map(([k,d])=>({ n: k.replace(/^\d+-/,'').trim(), meta: d.proj.reduce((a,b)=>a+b,0), hist: d.histQ2_2025 }))
+    .sort((a,b)=>b.meta-a.meta).slice(0,6);
+
+  // Top 6 marcas
+  const topMarcas = Object.entries(marcaProj)
+    .map(([m,d])=>({ m, meta: d.proj.reduce((a,b)=>a+b,0), hist: d.histQ2_2025, port: d.portafolio }))
+    .sort((a,b)=>b.meta-a.meta).slice(0,6);
+
+  // Top 6 clientes
+  const topClientes = Object.entries(clientProj)
+    .map(([k,d])=>({ n: RAW_DATA.clientes[k]?.nombre || k, meta: d.proj.reduce((a,b)=>a+b,0) }))
+    .sort((a,b)=>b.meta-a.meta).slice(0,6);
+
+  // Bottom 3 vendedores (tendencia negativa)
+  const lowVend = Object.entries(vendProj)
+    .map(([k,d])=>({ n: k.replace(/^\d+-/,'').trim(), meta: d.proj.reduce((a,b)=>a+b,0), hist: d.histQ2_2025 }))
+    .filter(v=>v.hist>0).sort((a,b)=>(a.meta-a.hist)/a.hist-(b.meta-b.hist)/b.hist).slice(0,3);
+
+  const ctx = `COFERSA Q3 2026 — Meta Total: ¢${(totalMeta/1e6).toFixed(1)}M | Q3 2025 Real: ¢${(totalHist/1e6).toFixed(1)}M | Var: ${totalHist>0?((totalMeta-totalHist)/totalHist*100).toFixed(1):0}%
+TOP VENDEDORES: ${topVend.map(v=>`${v.n}:¢${(v.meta/1e6).toFixed(1)}M`).join(', ')}
+VENDEDORES ALERTA: ${lowVend.map(v=>`${v.n}:${v.hist>0?((v.meta-v.hist)/v.hist*100).toFixed(0):'N/A'}%`).join(', ')}
+TOP MARCAS: ${topMarcas.map(m=>`${m.m}(${m.port||'?'}):¢${(m.meta/1e6).toFixed(1)}M`).join(', ')}
+TOP CLIENTES: ${topClientes.map(c=>`${c.n.substring(0,30)}:¢${(c.meta/1e6).toFixed(1)}M`).join(', ')}`;
+
+  const prompt = `Sos el analista comercial de COFERSA Costa Rica. Con estos datos Q3 2026, generá un resumen ejecutivo estructurado en JSON estricto (sin markdown, sin backticks, solo el objeto JSON):
+
+${ctx}
+
+Devolvé EXACTAMENTE este JSON (completa cada campo con análisis real basado en los datos):
+{
+  "resumen": "2 oraciones ejecutivas sobre la situación general del Q3 2026",
+  "vendedores": {
+    "top": [{"nombre":"...","insight":"por qué destaca"}],
+    "alerta": [{"nombre":"...","riesgo":"qué riesgo representa"}]
+  },
+  "marcas": {
+    "lideres": [{"marca":"...","portafolio":"...","insight":"..."}],
+    "oportunidad": [{"marca":"...","accion":"qué hacer con esta marca"}]
+  },
+  "clientes": {
+    "top": [{"cliente":"...","insight":"..."}],
+    "concentracion": "análisis de concentración del top 6 vs total"
+  },
+  "fortalezas": ["fortaleza 1 con dato numérico","fortaleza 2","fortaleza 3"],
+  "oportunidades": ["oportunidad 1 con acción concreta","oportunidad 2","oportunidad 3"]
+}`;
+
+  document.getElementById('aiWelcome').style.display = 'none';
+  document.getElementById('aiResponse').style.display = 'none';
+  document.getElementById('aiLoader').style.display = 'block';
+  document.getElementById('aiLoaderMsg').textContent = 'Generando resumen ejecutivo...';
+  document.getElementById('aiFooter').style.display = 'block';
+
+  try {
+    const key = sessionStorage.getItem(AI_PROVIDERS[aiProvider].sessionKey) || '';
+    if (!key) { alert('Ingresá tu API Key primero'); document.getElementById('aiLoader').style.display='none'; return; }
+
+    const res = await fetch(AI_PROVIDERS[aiProvider].endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'x-api-key': key, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' },
+      body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:1500, messages:[{role:'user',content:prompt}] })
+    });
+    const data = await res.json();
+    const text = data.content?.[0]?.text || '';
+
+    let d;
+    try { d = JSON.parse(text.replace(/```json|```/g,'')); } catch(e) { throw new Error('Error parseando respuesta'); }
+
+    const card = (icon,title,content,bg='var(--bg3)',border='var(--border)') =>
+      `<div style="background:${bg};border:1px solid ${border};border-radius:10px;padding:14px 16px;margin-bottom:10px">
+        <div style="font-size:12px;font-weight:700;color:var(--text2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px">${icon} ${title}</div>
+        ${content}
+      </div>`;
+
+    const pill = (txt, color) => `<span style="background:${color}18;color:${color};border:1px solid ${color}44;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:600;display:inline-block;margin:2px">${txt}</span>`;
+
+    const html = `
+      <div style="padding:4px 0">
+        ${card('📊','Resumen Ejecutivo',`<p style="font-size:13px;color:var(--text);line-height:1.7;margin:0">${d.resumen}</p>`,'var(--bg2)','var(--border)')}
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          ${card('👤','Top Vendedores',
+            (d.vendedores?.top||[]).map(v=>`<div style="font-size:12px;padding:5px 0;border-bottom:1px solid var(--border)"><strong style="color:var(--teal)">${v.nombre}</strong><br><span style="color:var(--text2)">${v.insight}</span></div>`).join('')
+          )}
+          ${card('⚠️','Vendedores en Alerta',
+            (d.vendedores?.alerta||[]).map(v=>`<div style="font-size:12px;padding:5px 0;border-bottom:1px solid var(--border)"><strong style="color:#dc2626">${v.nombre}</strong><br><span style="color:var(--text2)">${v.riesgo}</span></div>`).join('')
+          )}
+        </div>
+
+        ${card('🏷️','Marcas',`
+          <div style="margin-bottom:8px"><span style="font-size:11px;font-weight:600;color:var(--text2)">LÍDERES</span><br>
+          ${(d.marcas?.lideres||[]).map(m=>`<div style="font-size:12px;padding:4px 0"><strong>${m.marca}</strong> ${pill(m.portafolio,'#009ee3')} — <span style="color:var(--text2)">${m.insight}</span></div>`).join('')}</div>
+          <div><span style="font-size:11px;font-weight:600;color:var(--text2)">OPORTUNIDAD</span><br>
+          ${(d.marcas?.oportunidad||[]).map(m=>`<div style="font-size:12px;padding:4px 0"><strong>${m.marca}</strong> — <span style="color:#059669">${m.accion}</span></div>`).join('')}</div>
+        `)}
+
+        ${card('🏪','Top Clientes & Concentración',`
+          ${(d.clientes?.top||[]).map(c=>`<div style="font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)"><strong>${c.cliente}</strong><br><span style="color:var(--text2)">${c.insight}</span></div>`).join('')}
+          <div style="margin-top:8px;padding:8px;background:var(--bg);border-radius:6px;font-size:12px;color:var(--text2)">${d.clientes?.concentracion||''}</div>
+        `)}
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          ${card('💪','Fortalezas',
+            (d.fortalezas||[]).map((f,i)=>`<div style="display:flex;gap:8px;padding:5px 0;font-size:12px"><span style="color:#059669;font-weight:700;flex-shrink:0">${i+1}.</span><span style="color:var(--text)">${f}</span></div>`).join(''),
+            '#f0fdf4','#86efac'
+          )}
+          ${card('🚀','Oportunidades',
+            (d.oportunidades||[]).map((o,i)=>`<div style="display:flex;gap:8px;padding:5px 0;font-size:12px"><span style="color:#009ee3;font-weight:700;flex-shrink:0">${i+1}.</span><span style="color:var(--text)">${o}</span></div>`).join(''),
+            '#eff6ff','#93c5fd'
+          )}
+        </div>
+      </div>`;
+
+    document.getElementById('aiLoader').style.display = 'none';
+    document.getElementById('aiResponse').style.display = 'block';
+    document.getElementById('aiResponse').innerHTML = html;
+
+  } catch(e) {
+    document.getElementById('aiLoader').style.display = 'none';
+    document.getElementById('aiResponse').style.display = 'block';
+    document.getElementById('aiResponse').innerHTML = `<div style="color:var(--red);padding:20px">❌ ${e.message}</div>`;
+  }
+}
 
 async function runAI(type, btn) {
   document.querySelectorAll('.ai-pill').forEach(p => p.classList.remove('active'));
