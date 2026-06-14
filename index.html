@@ -4493,30 +4493,21 @@ Responde SOLO con este JSON (llena cada campo con análisis real):
   document.getElementById('aiFooter').style.display = 'block';
 
   try {
-    const text = await callAIProxy(prompt, 1500);
+    const text = await callAIProxy(prompt, 2500);
 
-    // Robust JSON extraction — handles markdown fences, extra text, etc.
+    // Robust JSON extraction
     let d;
-    try {
-      // Try 1: direct parse
-      d = JSON.parse(text);
-    } catch(_) {
-      try {
-        // Try 2: extract JSON block between first { and last }
-        const start = text.indexOf('{');
-        const end   = text.lastIndexOf('}');
-        if (start !== -1 && end !== -1) d = JSON.parse(text.slice(start, end + 1));
-        else throw new Error('no JSON found');
-      } catch(_2) {
-        // Try 3: strip markdown fences
-        try {
-          const clean = text.replace(/```json|```/g,'').trim();
-          d = JSON.parse(clean);
-        } catch(_3) {
-          throw new Error('Respuesta no es JSON válido: ' + text.slice(0,120));
-        }
-      }
-    }
+    const extractJSON = (s) => {
+      // Strip markdown fences first
+      s = s.replace(/^```json\s*/,'').replace(/\s*```\s*$/,'').trim();
+      // Find JSON boundaries
+      const start = s.indexOf('{');
+      const end   = s.lastIndexOf('}');
+      if (start === -1 || end === -1 || end <= start) throw new Error('no JSON found');
+      return JSON.parse(s.slice(start, end + 1));
+    };
+    try { d = extractJSON(text); }
+    catch(e) { throw new Error('Respuesta inválida: ' + text.slice(0,80)); }
 
     const card = (icon,title,content,bg='var(--bg3)',border='var(--border)') =>
       `<div style="background:${bg};border:1px solid ${border};border-radius:10px;padding:14px 16px;margin-bottom:10px">
@@ -4721,7 +4712,7 @@ async function callAI(prompt) {
   }, 1500);
 
   try {
-    const text = await callAIProxy(prompt, 1500);
+    const text = await callAIProxy(prompt, 2500);
     clearInterval(interval);
     document.getElementById('aiLoader').style.display = 'none';
     const el = document.getElementById('aiResponse');
