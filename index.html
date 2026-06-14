@@ -3018,7 +3018,7 @@ async function openEmailModal() {
       supervisor: r.supervisor?.replace(/^\d+-/, '').trim() || '',
       supervisor_raw: r.supervisor || '',
       portafolio: r.portafolio || 'Portafolio 0'
-    }));
+    })).sort((a, b) => a.label.localeCompare(b.label, 'es'));
 
     // Build supervisor groups — key by email to avoid duplicate codes (e.g. 92- vs 95-)
     const superMap = {};
