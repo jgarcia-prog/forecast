@@ -621,33 +621,10 @@ body {
         <button onclick="closeAIAnalysis()" style="background:none;border:none;cursor:pointer;color:var(--text2);font-size:20px;padding:4px 8px;border-radius:6px;line-height:1" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text2)'">✕</button>
       </div>
 
-      <!-- Provider + API Key -->
-      <div style="margin-top:12px">
-        <div style="display:flex;gap:6px;margin-bottom:8px">
-          <button class="ai-provider-btn" id="provBtn_gemini" onclick="selectProvider('gemini')">
-            <span style="font-size:14px">🟢</span> Gemini <span class="ai-provider-badge">Gratis</span>
-          </button>
-          <button class="ai-provider-btn active" id="provBtn_groq" onclick="selectProvider('groq')">
-            <span style="font-size:14px">⚡</span> Groq <span class="ai-provider-badge">Gratis</span>
-          </button>
-          <button class="ai-provider-btn" id="provBtn_anthropic" onclick="selectProvider('anthropic')">
-            <span style="font-size:14px">🤖</span> Claude <span class="ai-provider-badge pago">Pago</span>
-          </button>
-        </div>
-        <div id="aiKeyRow" style="display:flex;gap:8px;align-items:center">
-          <input type="password" id="aiApiKey" class="search-input"
-            style="flex:1;width:auto;font-family:var(--font-mono);font-size:12px"
-            placeholder="Pegá tu API Key aquí..."
-            oninput="checkApiKey()">
-          <a id="aiKeyLink" href="https://aistudio.google.com/apikey" target="_blank"
-            style="font-size:11px;color:var(--blue);white-space:nowrap;text-decoration:none">
-            Obtener key →
-          </a>
-        </div>
-        <div id="aiKeyStatus" style="font-size:11px;margin-top:4px;display:none"></div>
-        <div id="aiProviderHint" style="font-size:11px;color:var(--text2);margin-top:4px">
-          ⚡ <strong>Groq</strong> — Completamente gratis · Conexión directa (sin restricciones) · <a href="https://console.groq.com/keys" target="_blank" style="color:var(--blue)">console.groq.com</a> → API Keys
-        </div>
+      <!-- No API key needed — uses Supabase proxy -->
+      <div style="margin-top:10px;display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)">
+        <div style="width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0"></div>
+        <div style="font-size:12px;color:var(--text2)">Análisis con <strong style="color:var(--text)">Claude</strong> · Sin configuración requerida · Listo para usar</div>
       </div>
 
       <!-- Quick filter pills -->
@@ -4340,18 +4317,22 @@ function loadGSheets() {
 // ==================== AI ANALYSIS ====================
 let aiAbortController = null;
 
+const SUPA_AI_URL = `https://gjjizybsdqqcxrzmlzru.supabase.co/functions/v1/ai-proxy`;
+
+async function callAIProxy(prompt, max_tokens = 1500) {
+  const res = await fetch(SUPA_AI_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` },
+    body: JSON.stringify({ prompt, max_tokens })
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || 'Error en el análisis');
+  return data.text;
+}
+
 function openAIAnalysis() {
   document.getElementById('aiModal').style.display = 'block';
-  // Set correct placeholder for active provider
-  const cfg = AI_PROVIDERS[aiProvider];
-  document.getElementById('aiApiKey').placeholder = cfg.placeholder;
-  document.getElementById('aiKeyLink').href = cfg.link;
-  // Restore saved key for current provider
-  const saved = sessionStorage.getItem(AI_PROVIDERS[aiProvider].sessionKey);
-  if (saved) {
-    document.getElementById('aiApiKey').value = saved;
-    checkApiKey();
-  }
+  document.getElementById('aiFooter').style.display = 'block';
   // Populate data summary
   const vendProj = computeVendProjections();
   const totalProj = getTotalProjection(vendProj);
@@ -4527,16 +4508,7 @@ Devolvé EXACTAMENTE este JSON (completa cada campo con análisis real basado en
   document.getElementById('aiFooter').style.display = 'block';
 
   try {
-    const key = sessionStorage.getItem(AI_PROVIDERS[aiProvider].sessionKey) || '';
-    if (!key) { alert('Ingresá tu API Key primero'); document.getElementById('aiLoader').style.display='none'; return; }
-
-    const res = await fetch(AI_PROVIDERS[aiProvider].endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type':'application/json', 'x-api-key': key, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' },
-      body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:1500, messages:[{role:'user',content:prompt}] })
-    });
-    const data = await res.json();
-    const text = data.content?.[0]?.text || '';
+    const text = await callAIProxy(prompt, 1500);
 
     let d;
     try { d = JSON.parse(text.replace(/```json|```/g,'')); } catch(e) { throw new Error('Error parseando respuesta'); }
@@ -4730,27 +4702,6 @@ function checkApiKey() {
 }
 
 async function callAI(prompt) {
-  const key = document.getElementById('aiApiKey').value.trim() ||
-              sessionStorage.getItem(AI_PROVIDERS[aiProvider].sessionKey) || '';
-  const cfg = AI_PROVIDERS[aiProvider];
-
-  if (!key || !cfg.validate(key)) {
-    document.getElementById('aiWelcome').style.display = 'none';
-    document.getElementById('aiLoader').style.display = 'none';
-    document.getElementById('aiResponse').style.display = 'block';
-    document.getElementById('aiResponse').innerHTML = `
-      <div class="ai-card risk">
-        <div class="ai-label">API Key requerida</div><br>
-        <strong>Ingresá tu API Key de ${cfg.name}</strong> en el campo de arriba.<br><br>
-        <span style="font-size:12px;color:var(--text2)">
-          1. Visitá <a href="${cfg.link}" target="_blank" style="color:var(--blue)">${cfg.link.replace('https://','')}</a><br>
-          2. Creá o copiá tu API Key<br>
-          3. Pegala en el campo de arriba y ejecutá el análisis
-        </span>
-      </div>`;
-    return;
-  }
-
   if (aiAbortController) aiAbortController.abort();
   aiAbortController = new AbortController();
 
@@ -4758,21 +4709,21 @@ async function callAI(prompt) {
   document.getElementById('aiResponse').style.display = 'none';
   document.getElementById('aiLoader').style.display = 'block';
 
-  const msgs = [`Conectando con ${cfg.name}...`, 'Intentando conexión...', 'Procesando datos...', 'Generando análisis...'];
+  const msgs = ['Conectando con Claude...', 'Procesando datos...', 'Generando análisis...', 'Casi listo...'];
   let mi = 0;
   const interval = setInterval(() => {
     document.getElementById('aiLoaderMsg').textContent = msgs[mi % msgs.length]; mi++;
   }, 1500);
 
   try {
-    const text = await cfg.call(prompt, key, aiAbortController.signal);
+    const text = await callAIProxy(prompt, 1500);
     clearInterval(interval);
     document.getElementById('aiLoader').style.display = 'none';
     const el = document.getElementById('aiResponse');
     el.style.display = 'block';
     el.innerHTML = `<div class="ai-streaming">${renderMarkdown(text)}</div>
       <div style="margin-top:16px;padding:10px 14px;background:var(--bg3);border-radius:8px;font-size:11px;color:var(--text2);border:1px solid var(--border)">
-        🤖 Análisis generado por ${cfg.name} · ${new Date().toLocaleString('es-CR')}
+        🤖 Análisis generado por Claude · ${new Date().toLocaleString('es-CR')}
       </div>`;
     document.getElementById('aiContent').scrollTop = 0;
   } catch(e) {
