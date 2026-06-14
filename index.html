@@ -789,7 +789,10 @@ body {
   <div class="card">
     <div class="card-header">
       <div>
-        <div class="card-title">Meta por Marca — Q3 2026</div>
+        <div class="card-title">Meta por Marca — Q3 2026
+          <span style="font-size:11px;font-weight:400;color:var(--text3);margin-left:10px">✏️ Clic en Meta Jul/Ago/Sep/Total Q3 para editar directamente</span>
+          <button onclick="clearAllMarcaOverrides()" style="margin-left:12px;padding:3px 10px;font-size:11px;border:1px solid #fca5a5;background:#fef2f2;color:#dc2626;border-radius:6px;cursor:pointer">✕ Limpiar ajustes de metas</button>
+        </div>
         <div class="card-sub">109 marcas · Con factores de ajuste</div>
       </div>
       <input type="text" class="search-input" placeholder="🔍 Buscar marca..." id="searchMarca" oninput="filterTable('marcaTable',this.value,0)">
@@ -1342,13 +1345,14 @@ const RAW_DATA = {"months":["enero de 2024","febrero de 2024","marzo de 2024","a
 // ==================== STATE ====================
 let state = {
   adjustments: { vendedores: {}, marcas: {}, portafolios: {} },
+  marcaOverrides: {},  // { 'MARCA': [jul, ago, sep] } — absolute value overrides
   adjVsQ22025: {},
   budgetWeights: null,
   blendWeight: 0.60,
   smoothOutliers: false,
   smoothSigma: 2.0,
   projWeights: null,
-  reasignaciones: [],   // { id, tipo:'cliente'|'vendedor', de, a, cliente, fecha }
+  reasignaciones: [],
   budgetTarget: null,
   filterPortfolio: 'all',
   filterVendedor: '',
@@ -1496,10 +1500,14 @@ function computeMarcaProjections() {
   const raw = {};
   Object.entries(RAW_DATA.marcas).forEach(([marca, d]) => {
     const adj = (1 + (state.adjustments.marcas[marca] || 0) / 100);
+    const baseProy = getProyeccion(d).map(v => v * adj);
+    // Apply absolute override if set
+    const ov = state.marcaOverrides[marca];
     raw[marca] = {
-      proj: getProyeccion(d).map(v => v * adj),
+      proj: ov ? [...ov] : baseProy,
       histQ2_2025: getHistQ2(d.historico, 2025),
-      histQ2_2024: getHistQ2(d.historico, 2024)
+      histQ2_2024: getHistQ2(d.historico, 2024),
+      hasOverride: !!ov
     };
   });
 
@@ -1514,7 +1522,9 @@ function computeMarcaProjections() {
     result[marca] = {
       proj: d.proj.map((v, i) => marcaGrand[i] > 0 ? v * vendGrand[i] / marcaGrand[i] : 0),
       histQ2_2025: d.histQ2_2025,
-      histQ2_2024: d.histQ2_2024
+      histQ2_2024: d.histQ2_2024,
+      hasOverride: d.hasOverride,
+      portafolio: RAW_DATA.marcas[marca]?.portafolio || ''
     };
   });
   return result;
@@ -2015,16 +2025,30 @@ function renderMarcaTable(marcaProj) {
     const varPct = x.histQ2_2025 > 0 ? ((x.total - x.histQ2_2025)/x.histQ2_2025*100) : 0;
     const adj = state.adjustments.marcas[x.m] || 0;
     const adjStr = (adj >= 0 ? '+' : '') + adj.toFixed(1) + '%';
+    const hasOv = x.hasOverride;
+    const ovStyle = hasOv ? 'background:#eff6ff;' : '';
+    const ovIcon = hasOv ? '✏️ ' : '';
+    const editCell = (val, monthIdx) =>
+      `<td class="num" style="${ovStyle}cursor:pointer;position:relative" 
+        onclick="editMarcaCell(this,'${x.m.replace(/'/g,"\\'")}',${monthIdx})"
+        title="Clic para editar meta">
+        ${ovIcon}${fmt(val)}
+      </td>`;
+    const totalOvStyle = hasOv ? 'background:#eff6ff;' : '';
     return `<tr>
-      <td>${x.m}</td>
+      <td>${x.m}${hasOv?` <span style="font-size:10px;color:#009ee3;font-weight:600">AJUSTADO</span>`:''}</td>
       <td class="num">${fmt(x.histQ2_2024)}</td>
       <td class="num">${fmt(x.histQ2_2025)}</td>
-      <td class="num">${fmt(x.proj[0])}</td>
-      <td class="num">${fmt(x.proj[1])}</td>
-      <td class="num">${fmt(x.proj[2])}</td>
-      <td class="num" style="color:var(--gold);font-weight:600">${fmt(x.total)}</td>
+      ${editCell(x.proj[0], 0)}
+      ${editCell(x.proj[1], 1)}
+      ${editCell(x.proj[2], 2)}
+      <td class="num" style="${totalOvStyle}cursor:pointer;font-weight:600;color:var(--gold)" 
+        onclick="editMarcaCell(this,'${x.m.replace(/'/g,"\\'")}',3)"
+        title="Clic para editar total Q3 (se distribuye proporcionalmente)">
+        ${ovIcon}${fmt(x.total)}
+      </td>
       <td class="num ${varPct>=0?'pos':'neg'}">${fmtPct(varPct)}</td>
-      <td class="num" style="color:${adj>=0?'var(--teal)':'var(--red)'}">${adjStr}</td>
+      <td class="num" style="color:${adj>=0?'var(--teal)':'var(--red)'}">${adjStr}${hasOv?` <button onclick="clearMarcaOverride('${x.m.replace(/'/g,"\\'")}',event)" style="border:none;background:#fee2e2;color:#dc2626;border-radius:4px;padding:1px 5px;font-size:10px;cursor:pointer;margin-left:4px">✕</button>`:''}</td>
     </tr>`;
   }).join('');
 
@@ -4736,6 +4760,7 @@ function saveState() {
     savedAt: new Date().toISOString(),
     state: {
       adjustments:    state.adjustments,
+      marcaOverrides: state.marcaOverrides,
       adjVsQ22025:    state.adjVsQ22025,
       reasignaciones: state.reasignaciones,
       budgetTarget:   state.budgetTarget,
@@ -4791,6 +4816,7 @@ function loadSavedState() {
     // Restore state fields
     const s = snapshot.state;
     state.adjustments    = s.adjustments    || { vendedores:{}, marcas:{}, portafolios:{} };
+    state.marcaOverrides = s.marcaOverrides || {};
     state.adjVsQ22025    = s.adjVsQ22025    || {};
     state.reasignaciones = s.reasignaciones || [];
     state.budgetTarget   = s.budgetTarget   || RAW_DATA.presupuesto_q2;
@@ -5172,6 +5198,71 @@ function showToast(msg) {
   t.style.opacity = '1';
   clearTimeout(t._timer);
   t._timer = setTimeout(() => { t.style.opacity = '0'; }, 3000);
+}
+
+function editMarcaCell(td, marca, monthIdx) {
+  if (td.querySelector('input')) return; // already editing
+  const marcaProj = computeMarcaProjections();
+  const cur = marcaProj[marca];
+  if (!cur) return;
+
+  const currentVal = monthIdx === 3
+    ? cur.proj.reduce((a,b)=>a+b,0)
+    : cur.proj[monthIdx];
+
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.value = Math.round(currentVal);
+  input.style.cssText = 'width:110px;padding:3px 6px;border:2px solid #009ee3;border-radius:6px;font-size:12px;font-family:var(--font-mono);text-align:right;background:var(--bg)';
+
+  td.innerHTML = '';
+  td.appendChild(input);
+  input.focus();
+  input.select();
+
+  const apply = () => {
+    const newVal = parseFloat(input.value);
+    if (isNaN(newVal) || newVal < 0) { render(); return; }
+
+    const ov = state.marcaOverrides[marca]
+      ? [...state.marcaOverrides[marca]]
+      : [...cur.proj];
+
+    if (monthIdx === 3) {
+      // Distribute total proportionally to months
+      const oldTotal = ov.reduce((a,b)=>a+b,0);
+      if (oldTotal > 0) {
+        state.marcaOverrides[marca] = ov.map(v => v * newVal / oldTotal);
+      } else {
+        state.marcaOverrides[marca] = [newVal/3, newVal/3, newVal/3];
+      }
+    } else {
+      ov[monthIdx] = newVal;
+      state.marcaOverrides[marca] = ov;
+    }
+    render();
+    saveState();
+  };
+
+  input.addEventListener('blur', apply);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { input.blur(); }
+    if (e.key === 'Escape') { delete state.marcaOverrides[marca]; render(); }
+  });
+}
+
+function clearMarcaOverride(marca, event) {
+  event.stopPropagation();
+  delete state.marcaOverrides[marca];
+  render();
+  saveState();
+}
+
+function clearAllMarcaOverrides() {
+  state.marcaOverrides = {};
+  render();
+  saveState();
+  showToast('✅ Todos los ajustes de marcas eliminados');
 }
 
 function resetData() {
