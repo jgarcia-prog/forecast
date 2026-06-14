@@ -3322,7 +3322,20 @@ async function buildVCMPayload(vcmData, vendedor, vendProjData) {
   });
   const clientes=Object.values(byAlias).filter(c=>c.meta_q3>10000);
   // Monthly breakdown from the model projection (more accurate than VCM average)
-  const proj = vendProjData?.proj || [0,0,0];
+  // Use passed data or fuzzy-find in vendProj
+  let projData = vendProjData;
+  if (!projData || !projData.proj) {
+    const vendProj = computeVendProjections();
+    const norm = v => v.replace(/^\d+-/, '').trim().toLowerCase();
+    const nv = norm(vendedor);
+    const key = Object.keys(vendProj).find(k => {
+      const nk = norm(k);
+      return nk === nv || nv.startsWith(nk) || nk.startsWith(nv) ||
+             nk.split(' ').slice(0,2).join(' ') === nv.split(' ').slice(0,2).join(' ');
+    });
+    projData = key ? vendProj[key] : null;
+  }
+  const proj = projData?.proj || [0,0,0];
   const totals={
     hist_q3_2025: clientes.reduce((s,c)=>s+c.hist_q3_2025,0),
     hist_q3_2024: clientes.reduce((s,c)=>s+c.hist_q3_2024,0),
