@@ -1496,36 +1496,62 @@ function computeVendProjections() {
 }
 
 function computeMarcaProjections() {
-  // Step 1: raw independent projection per marca (with its adjustment)
+  // Step 1: raw projection per marca with adjustments and overrides
   const raw = {};
   Object.entries(RAW_DATA.marcas).forEach(([marca, d]) => {
     const adj = (1 + (state.adjustments.marcas[marca] || 0) / 100);
     const baseProy = getProyeccion(d).map(v => v * adj);
-    // Apply absolute override if set
     const ov = state.marcaOverrides[marca];
     raw[marca] = {
       proj: ov ? [...ov] : baseProy,
       histQ2_2025: getHistQ2(d.historico, 2025),
       histQ2_2024: getHistQ2(d.historico, 2024),
-      hasOverride: !!ov
+      hasOverride: !!ov,
+      portafolio: RAW_DATA.marcas[marca]?.portafolio || ''
     };
   });
 
-  // Step 2: grand totals from vendedores (source of truth) and marcas (raw)
   const vendProj = computeVendProjections();
   const vendGrand = [0,1,2].map(i => Object.values(vendProj).reduce((s,v)=>s+v.proj[i],0));
-  const marcaGrand = [0,1,2].map(i => Object.values(raw).reduce((s,v)=>s+v.proj[i],0));
+  const hasAnyOverride = Object.keys(state.marcaOverrides).length > 0;
 
-  // Step 3: scale each marca projection so totals match vendedores
+  if (!hasAnyOverride) {
+    // No overrides: scale all brands proportionally to match vendor totals
+    const marcaGrand = [0,1,2].map(i => Object.values(raw).reduce((s,v)=>s+v.proj[i],0));
+    const result = {};
+    Object.entries(raw).forEach(([marca, d]) => {
+      result[marca] = {
+        proj: d.proj.map((v,i) => marcaGrand[i] > 0 ? v * vendGrand[i] / marcaGrand[i] : 0),
+        histQ2_2025: d.histQ2_2025,
+        histQ2_2024: d.histQ2_2024,
+        hasOverride: false,
+        portafolio: d.portafolio
+      };
+    });
+    return result;
+  }
+
+  // With overrides: overridden brands keep exact values,
+  // non-overridden brands fill remainder proportionally
+  const ovGrand    = [0,1,2].map(i => Object.values(raw).filter(d=>d.hasOverride).reduce((s,d)=>s+d.proj[i],0));
+  const nonOvGrand = [0,1,2].map(i => Object.values(raw).filter(d=>!d.hasOverride).reduce((s,d)=>s+d.proj[i],0));
+
   const result = {};
   Object.entries(raw).forEach(([marca, d]) => {
-    result[marca] = {
-      proj: d.proj.map((v, i) => marcaGrand[i] > 0 ? v * vendGrand[i] / marcaGrand[i] : 0),
-      histQ2_2025: d.histQ2_2025,
-      histQ2_2024: d.histQ2_2024,
-      hasOverride: d.hasOverride,
-      portafolio: RAW_DATA.marcas[marca]?.portafolio || ''
-    };
+    if (d.hasOverride) {
+      // Keep override values exactly as set
+      result[marca] = { ...d };
+    } else {
+      // Scale non-overridden brands to fill the remainder after overrides
+      const remainder = [0,1,2].map(i => Math.max(0, vendGrand[i] - ovGrand[i]));
+      result[marca] = {
+        proj: d.proj.map((v,i) => nonOvGrand[i] > 0 ? v * remainder[i] / nonOvGrand[i] : 0),
+        histQ2_2025: d.histQ2_2025,
+        histQ2_2024: d.histQ2_2024,
+        hasOverride: false,
+        portafolio: d.portafolio
+      };
+    }
   });
   return result;
 }
@@ -2060,16 +2086,17 @@ function renderMarcaTable(marcaProj) {
   const totJun    = sorted.reduce((s,x)=>s+x.proj[2],0);
   const totTotal  = sorted.reduce((s,x)=>s+x.total,0);
   const totVar    = totHist25 > 0 ? ((totTotal - totHist25)/totHist25*100) : 0;
+  const ovCount   = Object.keys(state.marcaOverrides).length;
 
   const tfoot = document.getElementById('marcaTableFoot');
   if (tfoot) tfoot.innerHTML = `<tr class="total-row">
-    <td><strong>TOTAL</strong></td>
-    <td class="num"><strong>${fmt(totHist25)}</strong></td>
+    <td><strong>TOTAL</strong>${ovCount>0?` <span style="font-size:10px;color:#009ee3;font-weight:600">(${ovCount} marca${ovCount>1?'s':''} ajustada${ovCount>1?'s':''})</span>`:''}</td>
     <td class="num"><strong>${fmt(totHist24)}</strong></td>
+    <td class="num"><strong>${fmt(totHist25)}</strong></td>
     <td class="num"><strong>${fmt(totAbr)}</strong></td>
     <td class="num"><strong>${fmt(totMay)}</strong></td>
     <td class="num"><strong>${fmt(totJun)}</strong></td>
-    <td class="num" style="color:var(--gold)"><strong>${fmt(totTotal)}</strong></td>
+    <td class="num" style="color:var(--gold)${ovCount>0?';background:#eff6ff':''}"><strong>${fmt(totTotal)}</strong></td>
     <td class="num ${totVar>=0?'pos':'neg'}"><strong>${fmtPct(totVar)}</strong></td>
     <td class="num">—</td>
   </tr>`;
