@@ -3917,7 +3917,7 @@ async function _doExportExcel(exportBtn) {
   XLSX.utils.book_append_sheet(wb, mkWS(vmRows, [10,35,14,30,18,18,18,18,18,20,10,10], [4,5,6,7,8,9], [10,11]), '8_Vend_Marca');
 
   // ── HOJA 9: VEND-CLIENTE-MARCA (fetch completo desde Supabase) ───────────
-  const vcmH = ['Nivel','Zona de Venta','Razón Social','Código Cliente','Portafolio','Marca',
+  const vcmH = ['Nivel','Zona de Venta','Razón Social','Código Cliente','Alias','Portafolio','Marca',
     'Hist Q3 2024 ¢','Hist Q3 2025 ¢','Meta Q3 2026 ¢','Var %'];
   const vcmRows = [vcmH];
 
@@ -3950,7 +3950,7 @@ async function _doExportExcel(exportBtn) {
     const byVend = {};
     vcmData.forEach(r => {
       if (!byVend[r.vendedor]) byVend[r.vendedor] = {};
-      if (!byVend[r.vendedor][r.alias]) byVend[r.vendedor][r.alias] = { nombre: r.cliente_nombre, marcas: [] };
+      if (!byVend[r.vendedor][r.alias]) byVend[r.vendedor][r.alias] = { nombre: r.cliente_nombre, cod: r.cod_cliente, marcas: [] };
       byVend[r.vendedor][r.alias].marcas.push(r);
     });
 
@@ -3962,7 +3962,7 @@ async function _doExportExcel(exportBtn) {
       const vendH25 = Object.values(vendClients).reduce((s,c)=>s+c.marcas.reduce((ss,m)=>ss+(Number(m.hist_q3_2025)||0),0),0);
       const vendMeta = Object.values(vendClients).reduce((s,c)=>s+c.marcas.reduce((ss,m)=>ss+(Number(m.meta_q3)||0),0),0);
       const vendVar = vendH25>0?(vendMeta-vendH25)/vendH25:0;
-      vcmRows.push(['ZONA', vend.replace(/^\d+-/,'').trim(), '','','','', Math.round(vendH24), Math.round(vendH25), Math.round(vendMeta), vendVar]);
+      vcmRows.push(['ZONA', vend.replace(/^\d+-/,'').trim(), '','','','','', Math.round(vendH24), Math.round(vendH25), Math.round(vendMeta), vendVar]);
 
       // Clients sorted by hist_q3_2025 desc
       Object.entries(vendClients)
@@ -3973,7 +3973,7 @@ async function _doExportExcel(exportBtn) {
           const cMeta= cd.marcas.reduce((s,m)=>s+(Number(m.meta_q3)||0),0);
           if (cMeta < 10000) return;
           const cVar = cH25>0?(cMeta-cH25)/cH25:0;
-          vcmRows.push(['  CLIENTE', '  '+vend.replace(/^\d+-/,'').trim(), cd.nombre||alias, alias, '','', Math.round(cH24), Math.round(cH25), Math.round(cMeta), cVar]);
+          vcmRows.push(['  CLIENTE', '  '+vend.replace(/^\d+-/,'').trim(), cd.nombre||alias, cd.cod||'', alias, '','', Math.round(cH24), Math.round(cH25), Math.round(cMeta), cVar]);
 
           // Marcas sorted by hist_q3_2025 desc
           cd.marcas
@@ -3982,14 +3982,14 @@ async function _doExportExcel(exportBtn) {
               const mH24=Number(m.hist_q3_2024)||0, mH25=Number(m.hist_q3_2025)||0, mMeta=Number(m.meta_q3)||0;
               if(mMeta<1000)return;
               const mVar=mH25>0?(mMeta-mH25)/mH25:0;
-              vcmRows.push(['    MARCA','    '+vend.replace(/^\d+-/,'').trim(), cd.nombre||alias, alias, m.portafolio||'', m.marca||'', Math.round(mH24), Math.round(mH25), Math.round(mMeta), mVar]);
+              vcmRows.push(['    MARCA','    '+vend.replace(/^\d+-/,'').trim(), cd.nombre||alias, cd.cod||'', alias, m.portafolio||'', m.marca||'', Math.round(mH24), Math.round(mH25), Math.round(mMeta), mVar]);
             });
         });
     });
   } else {
     vcmRows.push(['(Sin datos — cargá desde ⚡ Supabase para ver el desglose)', '','','','','','','','','']);
   }
-  XLSX.utils.book_append_sheet(wb, mkWS(vcmRows, [10,35,40,30,14,30,18,18,20,10], [6,7,8], [9]), '9_Vend_Cliente_Marca');
+  XLSX.utils.book_append_sheet(wb, mkWS(vcmRows, [10,35,40,16,30,14,30,18,18,20,10], [7,8,9], [10]), '9_Vend_Cliente_Marca');
 
   if (exportBtn) exportBtn.textContent = '⏳ Escribiendo Excel...';
   XLSX.writeFile(wb, 'Forecast_COFERSA_Q3_2026.xlsx');
