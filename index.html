@@ -3917,7 +3917,7 @@ async function _doExportExcel(exportBtn) {
   XLSX.utils.book_append_sheet(wb, mkWS(vmRows, [10,35,14,30,18,18,18,18,18,20,10,10], [4,5,6,7,8,9], [10,11]), '8_Vend_Marca');
 
   // ── HOJA 9: VEND-CLIENTE-MARCA (fetch completo desde Supabase) ───────────
-  const vcmH = ['Nivel','Zona de Venta','Razón Social','Código / Alias','Portafolio','Marca',
+  const vcmH = ['Nivel','Zona de Venta','Razón Social','Código Cliente','Portafolio','Marca',
     'Hist Q3 2024 ¢','Hist Q3 2025 ¢','Meta Q3 2026 ¢','Var %'];
   const vcmRows = [vcmH];
 
@@ -3973,7 +3973,7 @@ async function _doExportExcel(exportBtn) {
           const cMeta= cd.marcas.reduce((s,m)=>s+(Number(m.meta_q3)||0),0);
           if (cMeta < 10000) return;
           const cVar = cH25>0?(cMeta-cH25)/cH25:0;
-          vcmRows.push(['  CLIENTE', '  '+vend.replace(/^\d+-/,'').trim(), cd.nombre||alias, cd.nombre?alias:'', '','', Math.round(cH24), Math.round(cH25), Math.round(cMeta), cVar]);
+          vcmRows.push(['  CLIENTE', '  '+vend.replace(/^\d+-/,'').trim(), cd.nombre||alias, alias, '','', Math.round(cH24), Math.round(cH25), Math.round(cMeta), cVar]);
 
           // Marcas sorted by hist_q3_2025 desc
           cd.marcas
@@ -3982,7 +3982,7 @@ async function _doExportExcel(exportBtn) {
               const mH24=Number(m.hist_q3_2024)||0, mH25=Number(m.hist_q3_2025)||0, mMeta=Number(m.meta_q3)||0;
               if(mMeta<1000)return;
               const mVar=mH25>0?(mMeta-mH25)/mH25:0;
-              vcmRows.push(['    MARCA','    '+vend.replace(/^\d+-/,'').trim(), cd.nombre||alias, cd.nombre?alias:'', m.portafolio||'', m.marca||'', Math.round(mH24), Math.round(mH25), Math.round(mMeta), mVar]);
+              vcmRows.push(['    MARCA','    '+vend.replace(/^\d+-/,'').trim(), cd.nombre||alias, alias, m.portafolio||'', m.marca||'', Math.round(mH24), Math.round(mH25), Math.round(mMeta), mVar]);
             });
         });
     });
