@@ -3997,6 +3997,10 @@ async function _doExportExcel(exportBtn) {
 
   const formatVendorKey = (vendedorRaw) => {
     if (!vendedorRaw) return '';
+    // Codes starting with a letter (e.g. "T15-TALLER...") keep their original prefix as-is
+    const letterMatch = vendedorRaw.match(/^([A-Za-z]+)(\d+)-/);
+    if (letterMatch) return letterMatch[1].toUpperCase() + letterMatch[2];
+    // Purely numeric prefixes get the Z + 3-digit padding
     const match = vendedorRaw.match(/^(\d+)-/);
     const num = match ? match[1] : vendedorRaw.replace(/\D/g,'');
     return 'Z' + num.padStart(3, '0');
