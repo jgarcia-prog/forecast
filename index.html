@@ -3992,6 +3992,83 @@ async function _doExportExcel(exportBtn) {
   }
   XLSX.utils.book_append_sheet(wb, mkWS(vcmRows, [10,35,40,16,30,14,30,18,18,20,10], [7,8,9], [10]), '9_Vend_Cliente_Marca');
 
+  // ── HOJA 10: BASE DE DATOS (formato relacional, una fila por mes/cliente/marca/vendedor) ──
+  if (exportBtn) exportBtn.textContent = '⏳ Generando Base de Datos...';
+
+  const EXCHANGE_RATE_DEFAULT = 505; // ₡/USD — editable en la celda J1 de la hoja
+  const monthDates = [
+    new Date(2026, 6, 1), // Julio 2026
+    new Date(2026, 7, 1), // Agosto 2026
+    new Date(2026, 8, 1)  // Septiembre 2026
+  ];
+
+  const bdRows = [['Fecha','Empresa','ClienteKey','ArticuloKey','VendedorKey','Monto_Meta_Local','Monto_Meta_USD']];
+  const vendProjAll = computeVendProjections();
+  const normV = s => s.replace(/^\d+-/,'').trim().toLowerCase();
+
+  if (vcmData.length > 0) {
+    vcmData.forEach(r => {
+      const metaQ3 = Number(r.meta_q3) || 0;
+      if (metaQ3 <= 0) return;
+
+      // Resolve monthly weights for this row's vendedor (fuzzy match against vendProjAll)
+      let vp = vendProjAll[r.vendedor];
+      if (!vp) {
+        const key = Object.keys(vendProjAll).find(k => normV(k) === normV(r.vendedor));
+        vp = key ? vendProjAll[key] : null;
+      }
+      const vTotal = vp ? vp.proj.reduce((a,b)=>a+b,0) : 0;
+      const weights = vTotal > 0 ? vp.proj.map(p => p / vTotal) : [1/3, 1/3, 1/3];
+
+      monthDates.forEach((fecha, mi) => {
+        const montoLocal = Math.round(metaQ3 * weights[mi]);
+        if (montoLocal <= 0) return;
+        bdRows.push([
+          fecha,
+          'COFERSA',
+          r.cod_cliente || r.alias || '',
+          r.marca || '',
+          r.vendedor || '',
+          montoLocal,
+          0 // placeholder — se calcula con fórmula en Excel
+        ]);
+      });
+    });
+  } else {
+    bdRows.push(['(Sin datos — cargá desde ⚡ Supabase para generar la Base de Datos)','','','','','','']);
+  }
+
+  const wsBD = XLSX.utils.aoa_to_sheet(bdRows);
+  wsBD['!cols'] = [{wch:12},{wch:12},{wch:18},{wch:30},{wch:30},{wch:18},{wch:16}];
+  wsBD['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft' };
+  wsBD['!autofilter'] = { ref: wsBD['!ref'] };
+
+  // Tipo de cambio editable — celda de referencia para la fórmula USD
+  XLSX.utils.sheet_add_aoa(wsBD, [['Tipo de Cambio ₡/USD:', EXCHANGE_RATE_DEFAULT]], { origin: 'I1' });
+  wsBD['!cols'][8] = { wch: 22 };
+  wsBD['!cols'][9] = { wch: 10 };
+
+  // Apply formats + USD formula referencing the exchange rate cell ($J$1)
+  const rangeBD = XLSX.utils.decode_range(wsBD['!ref'] || 'A1');
+  for (let R = 1; R <= rangeBD.e.r; R++) {
+    // Fecha (col A, idx 0) — date format
+    const aAddr = XLSX.utils.encode_cell({ r: R, c: 0 });
+    if (wsBD[aAddr] && wsBD[aAddr].v instanceof Date) {
+      wsBD[aAddr].t = 'd';
+      wsBD[aAddr].z = 'dd/mm/yyyy';
+    }
+    // Monto_Meta_Local (col F, idx 5) — number format
+    const fAddr = XLSX.utils.encode_cell({ r: R, c: 5 });
+    if (wsBD[fAddr] && wsBD[fAddr].t === 'n') wsBD[fAddr].z = '#,##0';
+    // Monto_Meta_USD (col G, idx 6) — formula = Local / TipoCambio
+    const gAddr = XLSX.utils.encode_cell({ r: R, c: 6 });
+    if (wsBD[fAddr]) {
+      wsBD[gAddr] = { t: 'n', f: `F${R+1}/$J$1`, z: '#,##0.00' };
+    }
+  }
+
+  XLSX.utils.book_append_sheet(wb, wsBD, '10_Base_de_Datos');
+
   if (exportBtn) exportBtn.textContent = '⏳ Escribiendo Excel...';
   XLSX.writeFile(wb, 'Forecast_COFERSA_Q3_2026.xlsx');
 }
