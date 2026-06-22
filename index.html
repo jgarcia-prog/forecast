@@ -1364,7 +1364,7 @@ let state = {
 // vendedorPortafolio is populated when loading from Supabase
 // Empty = no portafolio filter applied (show all brands per vendor)
 if (!RAW_DATA.vendedorPortafolio) RAW_DATA.vendedorPortafolio = {};
-const ORIGINAL_RAW_DATA = JSON.parse(JSON.stringify(RAW_DATA));
+let ORIGINAL_RAW_DATA = JSON.parse(JSON.stringify(RAW_DATA));
 
 // ==================== INIT ====================
 document.addEventListener('DOMContentLoaded', () => {
@@ -4148,6 +4148,8 @@ async function loadFromSupabase() {
     // Store original snapshot for reasignaciones rebuild
     window._originalVendedorClientes = JSON.parse(JSON.stringify(newVendCli));
     window._rawDataModified = true;
+    // CRITICAL: refresh ORIGINAL_RAW_DATA so future "Cambios de Cartera" don't wipe Supabase data
+    ORIGINAL_RAW_DATA = JSON.parse(JSON.stringify(RAW_DATA));
 
     // Reset adjustments for new vendor set
     state.adjustments = { vendedores: {}, marcas: {}, portafolios: {} };
@@ -4196,6 +4198,8 @@ function loadFile(input) {
       processUploadedData(rows);
       window._rawDataModified = true;
       window._originalVendedorClientes = JSON.parse(JSON.stringify(RAW_DATA.vendedorClientes || {}));
+      // CRITICAL: refresh ORIGINAL_RAW_DATA so future "Cambios de Cartera" don't wipe this data
+      ORIGINAL_RAW_DATA = JSON.parse(JSON.stringify(RAW_DATA));
       // Re-apply any existing reasignaciones against the new data
       if (state.reasignaciones.length > 0) applyReasignaciones();
       document.getElementById('dataStatus').textContent = '● Datos actualizados';
@@ -4862,6 +4866,9 @@ function loadSavedState() {
     if (snapshot.rawDataModified && snapshot.rawData) {
       Object.assign(RAW_DATA, snapshot.rawData);
       window._rawDataModified = true;
+      // CRITICAL: refresh ORIGINAL_RAW_DATA so "Cambios de Cartera" don't wipe restored data
+      ORIGINAL_RAW_DATA = JSON.parse(JSON.stringify(RAW_DATA));
+      window._originalVendedorClientes = JSON.parse(JSON.stringify(RAW_DATA.vendedorClientes || {}));
     }
 
     // Restore state fields
@@ -5018,12 +5025,26 @@ function updateReasigCount() {
 
 function saveReasignacion() {
   const tipo  = document.getElementById('reasigTipo').value;
-  const de    = document.getElementById('reasigDe').value;
-  const a     = document.getElementById('reasigA').value.trim();
+  let de      = document.getElementById('reasigDe').value.trim();
+  let a       = document.getElementById('reasigA').value.trim();
   const fecha = document.getElementById('reasigFecha').value;
 
   if (!de || !a || !fecha) { alert('Completá todos los campos requeridos.'); return; }
+
+  // Resolve "de" to an exact existing key (defensive against stray whitespace)
+  const normKey = s => s.replace(/^\d+-/,'').trim().toLowerCase();
+  if (!RAW_DATA.vendedores[de]) {
+    const found = Object.keys(RAW_DATA.vendedores).find(k => normKey(k) === normKey(de));
+    if (found) de = found;
+  }
+  // If "a" matches an EXISTING vendor (typo/case difference), reuse that key instead of creating a duplicate
+  if (!RAW_DATA.vendedores[a]) {
+    const foundA = Object.keys(RAW_DATA.vendedores).find(k => normKey(k) === normKey(a));
+    if (foundA) a = foundA;
+  }
+
   if (de === a) { alert('La zona origen y destino no pueden ser la misma.'); return; }
+  if (!RAW_DATA.vendedores[de]) { alert('No se encontró la zona origen "' + de + '". Verificá la selección.'); return; }
 
   // Create new vendor if it doesn't exist
   if (!RAW_DATA.vendedores[a]) {
@@ -5045,6 +5066,12 @@ function saveReasignacion() {
   renderReasigList();
   document.getElementById('reasigForm').style.display = 'none';
   render();
+  saveState();
+
+  // Confirm to the user that the transfer actually happened, with real numbers
+  const destProj = computeVendProjections()[a];
+  const destTotal = destProj ? destProj.proj.reduce((x,y)=>x+y,0) : 0;
+  showToast(`✅ Cartera transferida — ${a.replace(/^\d+-/,'').trim()} ahora proyecta ${fmt(destTotal)}`);
 }
 
 function removeReasignacion(id) {
@@ -5055,7 +5082,14 @@ function removeReasignacion(id) {
 }
 
 function applyReasignaciones() {
-  state.reasignaciones.forEach(r => {
+  const normKey = s => s.replace(/^\d+-/,'').trim().toLowerCase();
+  const resolveKey = (key) => {
+    if (RAW_DATA.vendedores[key]) return key;
+    return Object.keys(RAW_DATA.vendedores).find(k => normKey(k) === normKey(key)) || key;
+  };
+
+  state.reasignaciones.forEach(rOrig => {
+    const r = { ...rOrig, de: resolveKey(rOrig.de), a: resolveKey(rOrig.a) };
     const lista = r.clientes || (r.cliente ? [r.cliente] : []);
     const hasClienteMap = RAW_DATA.vendedorClientes && Object.keys(RAW_DATA.vendedorClientes).length > 0;
 
