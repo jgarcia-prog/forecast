@@ -4049,7 +4049,7 @@ async function _doExportExcel(exportBtn) {
           serial,
           'COFERSA',
           r.cod_cliente || r.alias || '',
-          r.marca || '',
+          r.marca_sfl || r.marca || '',
           formatVendorKey(r.vendedor),
           montoLocal,
           0 // placeholder — se calcula con fórmula en Excel
