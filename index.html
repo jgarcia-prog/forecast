@@ -942,6 +942,11 @@ body {
       <button class="btn btn-outline" onclick="addReasignacion()" style="font-size:12px;padding:5px 14px">+ Agregar cambio</button>
     </div>
 
+    <div id="reasigSuccessBanner" style="display:none;margin:0 0 14px;padding:12px 16px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;align-items:center;gap:10px">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2.5" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><polyline points="9 12 12 15 16 10"/></svg>
+      <div style="font-size:13px;color:#15803d;font-weight:600" id="reasigSuccessText"></div>
+    </div>
+
     <!-- Form nueva reasignación -->
     <div id="reasigForm" style="display:none;background:var(--bg3);border-radius:10px;padding:14px 16px;margin-bottom:14px;border:1px solid var(--border)">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
@@ -5071,7 +5076,19 @@ function saveReasignacion() {
   // Confirm to the user that the transfer actually happened, with real numbers
   const destProj = computeVendProjections()[a];
   const destTotal = destProj ? destProj.proj.reduce((x,y)=>x+y,0) : 0;
-  showToast(`✅ Cartera transferida — ${a.replace(/^\d+-/,'').trim()} ahora proyecta ${fmt(destTotal)}`);
+  const deLbl = de.replace(/^\d+-/,'').trim();
+  const aLbl  = a.replace(/^\d+-/,'').trim();
+
+  showToast(`✅ Cartera transferida — ${aLbl} ahora proyecta ${fmt(destTotal)}`);
+
+  const banner = document.getElementById('reasigSuccessBanner');
+  const bannerText = document.getElementById('reasigSuccessText');
+  if (banner && bannerText) {
+    bannerText.innerHTML = `Cambio ejecutado: <strong>${deLbl}</strong> → <strong>${aLbl}</strong>. Meta Q3 recalculada en ${fmt(destTotal)}. El cambio ya se refleja en Vendedores, Marcas, Portafolio y Clientes.`;
+    banner.style.display = 'flex';
+    clearTimeout(window._reasigBannerTimer);
+    window._reasigBannerTimer = setTimeout(() => { banner.style.display = 'none'; }, 8000);
+  }
 }
 
 function removeReasignacion(id) {
@@ -5213,6 +5230,7 @@ function renderReasigList() {
     el.innerHTML = '<div style="text-align:center;padding:20px;font-size:13px;color:var(--text3)">No hay cambios de cartera registrados</div>';
     return;
   }
+  const vendProj = computeVendProjections();
   el.innerHTML = state.reasignaciones.map(r => {
     const deLabel  = r.de.replace(/^\d+-/,'').replace(/\.\./g,'.').trim();
     const isNew    = !ORIGINAL_RAW_DATA.vendedores[r.a];
@@ -5226,9 +5244,20 @@ function renderReasigList() {
       ? `<strong>${lista.length} cliente${lista.length!==1?'s':''}</strong> — de <em>${deLabel}</em> → ${aDisplay}
          <div style="font-size:11px;color:var(--text3);margin-top:2px">${lista.slice(0,3).join(', ')}${lista.length>3?' y '+(lista.length-3)+' más..':''}</div>`
       : `Cartera completa de <em>${deLabel}</em> → ${aDisplay}`;
+
+    // Live confirmation of effect: how much is now projected for destination
+    const destTotal = vendProj[r.a]?.proj?.reduce((x,y)=>x+y,0) || 0;
+    const statusBadge = `<span style="display:inline-flex;align-items:center;gap:4px;background:#f0fdf4;color:#15803d;border:1px solid #86efac;font-size:10px;font-weight:700;padding:2px 8px;border-radius:6px;margin-top:4px">
+        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+        EJECUTADO — Meta Q3 ${fmt(destTotal)}
+      </span>`;
+
     return `<div style="padding:10px 14px;border-bottom:1px solid var(--border)">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
-        <div style="font-size:13px">${icon} ${desc} <span style="color:var(--text3);font-size:11px;margin-left:6px">desde ${r.fecha}</span></div>
+        <div style="font-size:13px">
+          ${icon} ${desc} <span style="color:var(--text3);font-size:11px;margin-left:6px">desde ${r.fecha}</span>
+          <div>${statusBadge}</div>
+        </div>
         <button class="btn btn-outline" onclick="removeReasignacion('${r.id}')" style="font-size:11px;padding:3px 10px;color:var(--red);border-color:var(--red);flex-shrink:0">✕</button>
       </div>
     </div>`;
