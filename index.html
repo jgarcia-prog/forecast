@@ -805,7 +805,6 @@ body {
             <th>Marca</th>
             <th class="num">Hist Q3 2024 (¢)</th>
             <th class="num">Hist Q3 2025 (¢)</th>
-            <th class="num">Hist Q2 2024 (¢)</th>
             <th class="num">Meta Jul 2026 (¢)</th>
             <th class="num">Meta Ago 2026 (¢)</th>
             <th class="num">Meta Sep 2026 (¢)</th>
@@ -851,7 +850,6 @@ body {
             <th style="min-width:280px">Zona / Vendedor</th>
             <th class="num">Hist Q3 2024 (¢)</th>
             <th class="num">Hist Q3 2025 (¢)</th>
-            <th class="num">Hist Q2 2024 (¢)</th>
             <th class="num">Meta Jul 2026 (¢)</th>
             <th class="num">Meta Ago 2026 (¢)</th>
             <th class="num">Meta Sep 2026 (¢)</th>
@@ -885,7 +883,6 @@ body {
             <th>Cliente</th>
             <th class="num">Hist Q3 2024 (¢)</th>
             <th class="num">Hist Q3 2025 (¢)</th>
-            <th class="num">Hist Q2 2024 (¢)</th>
             <th class="num">Meta Jul 2026 (¢)</th>
             <th class="num">Meta Ago 2026 (¢)</th>
             <th class="num">Meta Sep 2026 (¢)</th>
@@ -1152,7 +1149,6 @@ body {
             <th style="min-width:280px">Vendedor / Marca</th>
             <th class="num">Hist Q3 2024 (¢)</th>
             <th class="num">Hist Q3 2025 (¢)</th>
-            <th class="num">Hist Q2 2024 (¢)</th>
             <th class="num">Meta Jul 2026 (¢)</th>
             <th class="num">Meta Ago 2026 (¢)</th>
             <th class="num">Meta Sep 2026 (¢)</th>
@@ -1189,7 +1185,6 @@ body {
             <th style="min-width:280px">Vendedor / Cliente</th>
             <th class="num">Hist Q3 2024 (¢)</th>
             <th class="num">Hist Q3 2025 (¢)</th>
-            <th class="num">Hist Q2 2024 (¢)</th>
             <th class="num">Meta Jul 2026 (¢)</th>
             <th class="num">Meta Ago 2026 (¢)</th>
             <th class="num">Meta Sep 2026 (¢)</th>
@@ -2649,8 +2644,8 @@ function renderVendPortTable(vendProj, portProj) {
       const pPart = grandTotal > 0 ? (pTot/grandTotal*100) : 0;
       html += `<tr class="vp-port-row ${portColors[pi]} hidden" data-parent="${idx}">
         <td>${portLabels[pi]}</td>
-        <td class="num">${fmt(pH25)}</td>
         <td class="num">${fmt(pH24)}</td>
+        <td class="num">${fmt(pH25)}</td>
         <td class="num">${fmt(pAbr)}</td>
         <td class="num">${fmt(pMay)}</td>
         <td class="num">${fmt(pJun)}</td>
