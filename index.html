@@ -5183,10 +5183,13 @@ function applyReasignaciones() {
       }
       // Mark both as reasigned so getProyeccion bypasses the cache
       RAW_DATA.vendedores[r.a]._reasigned = true;
-      if (RAW_DATA.vendedores[r.de]) RAW_DATA.vendedores[r.de]._reasigned = true;
-      // Recompute proyeccion so getProyeccion fast-path returns correct values
       RAW_DATA.vendedores[r.a].proyeccion = projectQ2JS(RAW_DATA.vendedores[r.a].historico);
-      RAW_DATA.vendedores[r.de].proyeccion = [0, 0, 0];
+      if (RAW_DATA.vendedores[r.de]) {
+        RAW_DATA.vendedores[r.de]._reasigned = true;
+        RAW_DATA.vendedores[r.de].proyeccion = [0, 0, 0];
+      } else {
+        console.warn('[Reasignación] Vendedor origen no encontrado:', r.de, '— la cartera no se pudo transferir.');
+      }
 
       // Also transfer vendedorClientes if available
       if (hasClienteMap) {
@@ -5215,25 +5218,26 @@ function applyReasignaciones() {
 }
 
 function rebuildVendedorClientes() {
-  // Restore original vendedorClientes
+  // FULL clean reset: rebuild RAW_DATA.vendedores entirely from the authoritative
+  // ORIGINAL_RAW_DATA snapshot. This avoids any partial/corrupted state from
+  // previous reasignaciones — every reasignacion is reapplied fresh on top of
+  // a guaranteed-clean baseline.
+  RAW_DATA.vendedores = JSON.parse(JSON.stringify(ORIGINAL_RAW_DATA.vendedores));
+  Object.values(RAW_DATA.vendedores).forEach(v => { delete v._reasigned; });
+
+  // Restore original vendedorClientes the same way
   if (window._originalVendedorClientes) {
     RAW_DATA.vendedorClientes = JSON.parse(JSON.stringify(window._originalVendedorClientes));
   }
-  // Also restore original vendedores historico (so subtractions start fresh)
-  Object.keys(ORIGINAL_RAW_DATA.vendedores).forEach(v => {
-    if (RAW_DATA.vendedores[v]) {
-      RAW_DATA.vendedores[v].historico  = [...ORIGINAL_RAW_DATA.vendedores[v].historico];
-      RAW_DATA.vendedores[v].proyeccion = [...ORIGINAL_RAW_DATA.vendedores[v].proyeccion];
-      delete RAW_DATA.vendedores[v]._reasigned; // clear flag so fast-path works again
-    }
+
+  // Clean adjustments for vendors that no longer exist in the baseline
+  // (i.e. vendors created by a reasignacion that was later removed)
+  const validVendors = new Set(Object.keys(RAW_DATA.vendedores));
+  state.reasignaciones.forEach(r => validVendors.add(r.a));
+  Object.keys(state.adjustments.vendedores).forEach(v => {
+    if (!validVendors.has(v)) delete state.adjustments.vendedores[v];
   });
-  // Remove any vendors that were created as "new" (not in original)
-  Object.keys(RAW_DATA.vendedores).forEach(v => {
-    if (!ORIGINAL_RAW_DATA.vendedores[v]) {
-      delete RAW_DATA.vendedores[v];
-      delete state.adjustments.vendedores[v];
-    }
-  });
+
   applyReasignaciones();
 }
 
