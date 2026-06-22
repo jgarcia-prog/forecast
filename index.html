@@ -940,6 +940,7 @@ body {
         <div class="card-sub">Reasignaciones de clientes o reemplazos de vendedores — el historial se redistribuye automáticamente al calcular metas</div>
       </div>
       <button class="btn btn-outline" onclick="addReasignacion()" style="font-size:12px;padding:5px 14px">+ Agregar cambio</button>
+      <button class="btn btn-outline" onclick="loadFromSupabase()" title="Si los cambios no se reflejan, refrescá los datos antes de reintentar" style="font-size:11px;padding:5px 12px;margin-left:6px;color:#0369a1;border-color:#7dd3fc">🔄 Refrescar datos</button>
     </div>
 
     <div id="reasigSuccessBanner" style="display:none;margin:0 0 14px;padding:12px 16px;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;align-items:center;gap:10px">
@@ -5050,6 +5051,19 @@ function saveReasignacion() {
 
   if (de === a) { alert('La zona origen y destino no pueden ser la misma.'); return; }
   if (!RAW_DATA.vendedores[de]) { alert('No se encontró la zona origen "' + de + '". Verificá la selección.'); return; }
+
+  // Guard: if origin has zero historico, the transfer would move "nothing" silently.
+  // This usually means local data is stale (e.g. from a previous broken state saved before a fix).
+  const deHistTotal = (RAW_DATA.vendedores[de].historico || []).reduce((a,b)=>a+b,0);
+  if (tipo === 'vendedor' && deHistTotal === 0) {
+    const proceed = confirm(
+      `⚠️ La zona "${de.replace(/^\d+-/,'').trim()}" tiene histórico en CERO en los datos actuales.\n\n` +
+      `Esto normalmente significa que los datos locales están desactualizados (no reflejan lo cargado desde Supabase).\n\n` +
+      `Recomendado: cancelá esto, hacé clic en "⚡ Supabase" para refrescar los datos, y volvé a intentar el cambio.\n\n` +
+      `¿Continuar igual? (se transferirá una cartera vacía)`
+    );
+    if (!proceed) return;
+  }
 
   // Create new vendor if it doesn't exist
   if (!RAW_DATA.vendedores[a]) {
