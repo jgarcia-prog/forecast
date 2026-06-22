@@ -4004,9 +4004,9 @@ async function _doExportExcel(exportBtn) {
 
   const EXCHANGE_RATE_DEFAULT = 505; // ₡/USD — editable en la celda J1 de la hoja
   const monthDates = [
-    new Date(Date.UTC(2026, 6, 1)), // Julio 2026
-    new Date(Date.UTC(2026, 7, 1)), // Agosto 2026
-    new Date(Date.UTC(2026, 8, 1))  // Septiembre 2026
+    new Date(2026, 6, 1), // Julio 2026
+    new Date(2026, 7, 1), // Agosto 2026
+    new Date(2026, 8, 1)  // Septiembre 2026
   ];
 
   const bdRows = [['Fecha','Empresa','ClienteKey','ArticuloKey','VendedorKey','Monto_Meta_Local','Monto_Meta_USD']];
@@ -4058,10 +4058,9 @@ async function _doExportExcel(exportBtn) {
   // Apply formats + USD formula referencing the exchange rate cell ($J$1)
   const rangeBD = XLSX.utils.decode_range(wsBD['!ref'] || 'A1');
   for (let R = 1; R <= rangeBD.e.r; R++) {
-    // Fecha (col A, idx 0) — date format
+    // Fecha (col A, idx 0) — value is already numeric serial after aoa_to_sheet
     const aAddr = XLSX.utils.encode_cell({ r: R, c: 0 });
-    if (wsBD[aAddr] && wsBD[aAddr].v instanceof Date) {
-      wsBD[aAddr].t = 'd';
+    if (wsBD[aAddr] && wsBD[aAddr].t === 'n') {
       wsBD[aAddr].z = 'd/m/yyyy';
     }
     // Monto_Meta_Local (col F, idx 5) — number format
