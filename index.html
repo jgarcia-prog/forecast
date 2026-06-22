@@ -4007,10 +4007,21 @@ async function _doExportExcel(exportBtn) {
   };
 
   const EXCHANGE_RATE_DEFAULT = 505; // ₡/USD — editable en la celda J1 de la hoja
-  const monthDates = [
-    new Date(2026, 6, 1), // Julio 2026
-    new Date(2026, 7, 1), // Agosto 2026
-    new Date(2026, 8, 1)  // Septiembre 2026
+
+  // Excel serial computed manually with pure UTC arithmetic — this completely
+  // bypasses SheetJS's internal datenum() function, which uses getTimezoneOffset()
+  // and breaks in timezones with non-round HISTORICAL UTC offsets relative to its
+  // 1899-12-30 epoch (e.g. Costa Rica's pre-standardization offset), causing the
+  // classic "off by one day" bug regardless of how the JS Date object is built.
+  const excelSerial = (year, month1to12, day) => {
+    const utcDate = Date.UTC(year, month1to12 - 1, day);
+    const epoch   = Date.UTC(1899, 11, 30);
+    return Math.round((utcDate - epoch) / 86400000);
+  };
+  const monthSerials = [
+    excelSerial(2026, 7, 1), // Julio 2026   → 46204
+    excelSerial(2026, 8, 1), // Agosto 2026  → 46235
+    excelSerial(2026, 9, 1)  // Septiembre 2026 → 46266
   ];
 
   const bdRows = [['Fecha','Empresa','ClienteKey','ArticuloKey','VendedorKey','Monto_Meta_Local','Monto_Meta_USD']];
@@ -4031,11 +4042,11 @@ async function _doExportExcel(exportBtn) {
       const vTotal = vp ? vp.proj.reduce((a,b)=>a+b,0) : 0;
       const weights = vTotal > 0 ? vp.proj.map(p => p / vTotal) : [1/3, 1/3, 1/3];
 
-      monthDates.forEach((fecha, mi) => {
+      monthSerials.forEach((serial, mi) => {
         const montoLocal = Math.round(metaQ3 * weights[mi]);
         if (montoLocal <= 0) return;
         bdRows.push([
-          fecha,
+          serial,
           'COFERSA',
           r.cod_cliente || r.alias || '',
           r.marca || '',
