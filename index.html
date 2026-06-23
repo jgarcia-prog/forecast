@@ -1464,32 +1464,48 @@ function getProyeccion(d) {
 function getMarcaAdjFactor() {
   const hasAdj = Object.values(state.adjustments.marcas).some(v => v !== 0);
   const hasOv  = Object.keys(state.marcaOverrides).length > 0;
-  if (!hasAdj && !hasOv) return [1, 1, 1];
+  if (!hasAdj && !hasOv) return { factor: [1, 1, 1], extra: [0, 0, 0] };
 
-  let raw  = [0, 0, 0];
-  let adjd = [0, 0, 0];
+  let raw   = [0, 0, 0];
+  let adjd  = [0, 0, 0];
+  let extra = [0, 0, 0]; // absolute amount from zero-base overrides — can't be
+                          // captured by a multiplicative factor since there's no
+                          // historical proportion to scale (e.g. brand-new product
+                          // with no Q3 2024/2025 sales, set via bulk load)
   Object.entries(RAW_DATA.marcas).forEach(([marca, d]) => {
     const base = getProyeccion(d);
-    // Compute a per-month ratio (NOT a single quarter-level ratio applied to all
-    // 3 months) — this is critical when overrides specify different values per
-    // month (e.g. a bulk load with Jul ≠ Ago ≠ Sep), otherwise the global factor
-    // averages out the monthly distribution and vendor totals stop matching
-    // the marca-level totals exactly.
     let aArr;
     if (state.marcaOverrides[marca]) {
       const ov = state.marcaOverrides[marca];
-      aArr = base.map((v, i) => v > 0 ? ov[i] / v : 1);
+      aArr = base.map((v, i) => {
+        if (v > 0) return ov[i] / v;
+        extra[i] += ov[i]; // no base to scale from — add directly
+        return 1;
+      });
     } else {
       const pct = 1 + (state.adjustments.marcas[marca] || 0) / 100;
       aArr = [pct, pct, pct];
     }
     base.forEach((v, i) => { raw[i] += v; adjd[i] += v * aArr[i]; });
   });
-  return [0,1,2].map(i => raw[i] > 0 ? adjd[i] / raw[i] : 1);
+  const factor = [0,1,2].map(i => raw[i] > 0 ? adjd[i] / raw[i] : 1);
+  return { factor, extra };
 }
 
 function computeVendProjections() {
-  const marcaFactor = getMarcaAdjFactor();
+  const { factor: marcaFactor, extra: marcaExtra } = getMarcaAdjFactor();
+
+  // Pre-compute each vendor's base total (before extra) to distribute the
+  // zero-base "extra" amount proportionally by vendor size
+  const baseTotals = {};
+  let grandBaseTotal = [0, 0, 0];
+  Object.entries(RAW_DATA.vendedores).forEach(([vend, d]) => {
+    const adj = 1 + (state.adjustments.vendedores[vend] || 0) / 100;
+    const t = getProyeccion(d).map((v, i) => v * adj * marcaFactor[i]);
+    baseTotals[vend] = t;
+    grandBaseTotal = grandBaseTotal.map((g, i) => g + t[i]);
+  });
+
   const result = {};
   Object.entries(RAW_DATA.vendedores).forEach(([vend, d]) => {
     const histQ2_2025 = getHistQ2(d.historico, 2025);
@@ -1504,9 +1520,12 @@ function computeVendProjections() {
         ? base.map(p => target * p / baseTotal)
         : [target / 3, target / 3, target / 3];
     } else {
-      const adj = 1 + (state.adjustments.vendedores[vend] || 0) / 100;
-      // Apply both vendor adjustment and global marca adjustment factor
-      proj = getProyeccion(d).map((v, i) => v * adj * marcaFactor[i]);
+      // Vendor's multiplicative share + its proportional slice of the
+      // zero-base "extra" (distributed by this vendor's share of the company total)
+      proj = baseTotals[vend].map((v, i) => {
+        const share = grandBaseTotal[i] > 0 ? v / grandBaseTotal[i] : 0;
+        return v + marcaExtra[i] * share;
+      });
     }
 
     result[vend] = {
