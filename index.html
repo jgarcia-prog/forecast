@@ -1512,6 +1512,13 @@ function computeVendProjections() {
       proj = baseTotal > 0
         ? base.map(p => target * p / baseTotal)
         : [target / 3, target / 3, target / 3];
+      // This vendor has a direct target override, but marca adjustments must
+      // still apply — add this vendor's proportional share of the additive
+      // marca-override delta on top, same as every other vendor
+      proj = proj.map((p, i) => {
+        const share = grandBaseTotal[i] > 0 ? baseTotals[vend][i] / grandBaseTotal[i] : 0;
+        return p + marcaExtra[i] * share;
+      });
     } else {
       // Vendor's own slice + its proportional share of the additive
       // marca-override delta (distributed by this vendor's size)
