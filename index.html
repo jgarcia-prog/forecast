@@ -1470,17 +1470,20 @@ function getMarcaAdjFactor() {
   let adjd = [0, 0, 0];
   Object.entries(RAW_DATA.marcas).forEach(([marca, d]) => {
     const base = getProyeccion(d);
-    // Use override % if set, else use adjustments.marcas %
-    let a;
+    // Compute a per-month ratio (NOT a single quarter-level ratio applied to all
+    // 3 months) — this is critical when overrides specify different values per
+    // month (e.g. a bulk load with Jul ≠ Ago ≠ Sep), otherwise the global factor
+    // averages out the monthly distribution and vendor totals stop matching
+    // the marca-level totals exactly.
+    let aArr;
     if (state.marcaOverrides[marca]) {
       const ov = state.marcaOverrides[marca];
-      const baseTotal = base.reduce((x,y)=>x+y,0);
-      const ovTotal   = ov.reduce((x,y)=>x+y,0);
-      a = baseTotal > 0 ? ovTotal / baseTotal : 1;
+      aArr = base.map((v, i) => v > 0 ? ov[i] / v : 1);
     } else {
-      a = 1 + (state.adjustments.marcas[marca] || 0) / 100;
+      const pct = 1 + (state.adjustments.marcas[marca] || 0) / 100;
+      aArr = [pct, pct, pct];
     }
-    base.forEach((v, i) => { raw[i] += v; adjd[i] += v * a; });
+    base.forEach((v, i) => { raw[i] += v; adjd[i] += v * aArr[i]; });
   });
   return [0,1,2].map(i => raw[i] > 0 ? adjd[i] / raw[i] : 1);
 }
