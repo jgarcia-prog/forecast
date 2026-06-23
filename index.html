@@ -1462,41 +1462,34 @@ function getProyeccion(d) {
 }
 
 function getMarcaAdjFactor() {
+  // ADDITIVE model: overriding a marca does NOT redistribute/shrink other
+  // brands. Other brands keep their base values untouched; the override's
+  // delta (new - base) is added on top of the company total, increasing it.
   const hasAdj = Object.values(state.adjustments.marcas).some(v => v !== 0);
   const hasOv  = Object.keys(state.marcaOverrides).length > 0;
   if (!hasAdj && !hasOv) return { factor: [1, 1, 1], extra: [0, 0, 0] };
 
-  let raw   = [0, 0, 0];
-  let adjd  = [0, 0, 0];
-  let extra = [0, 0, 0]; // absolute amount from zero-base overrides — can't be
-                          // captured by a multiplicative factor since there's no
-                          // historical proportion to scale (e.g. brand-new product
-                          // with no Q3 2024/2025 sales, set via bulk load)
+  let extra = [0, 0, 0];
   Object.entries(RAW_DATA.marcas).forEach(([marca, d]) => {
     const base = getProyeccion(d);
-    let aArr;
     if (state.marcaOverrides[marca]) {
       const ov = state.marcaOverrides[marca];
-      aArr = base.map((v, i) => {
-        if (v > 0) return ov[i] / v;
-        extra[i] += ov[i]; // no base to scale from — add directly
-        return 1;
-      });
-    } else {
-      const pct = 1 + (state.adjustments.marcas[marca] || 0) / 100;
-      aArr = [pct, pct, pct];
+      base.forEach((v, i) => { extra[i] += (ov[i] - v); }); // pure delta, additive
+    } else if (state.adjustments.marcas[marca]) {
+      const pct = state.adjustments.marcas[marca] / 100;
+      base.forEach((v, i) => { extra[i] += v * pct; }); // % adjustment also additive
     }
-    base.forEach((v, i) => { raw[i] += v; adjd[i] += v * aArr[i]; });
   });
-  const factor = [0,1,2].map(i => raw[i] > 0 ? adjd[i] / raw[i] : 1);
-  return { factor, extra };
+  return { factor: [1, 1, 1], extra };
 }
 
 function computeVendProjections() {
   const { factor: marcaFactor, extra: marcaExtra } = getMarcaAdjFactor();
 
-  // Pre-compute each vendor's base total (before extra) to distribute the
-  // zero-base "extra" amount proportionally by vendor size
+  // Pre-compute each vendor's base total (own adjustment only) to distribute
+  // the additive marca-override "extra" proportionally by vendor size —
+  // additive model: other brands/vendors are untouched, the override's delta
+  // simply grows the company total
   const baseTotals = {};
   let grandBaseTotal = [0, 0, 0];
   Object.entries(RAW_DATA.vendedores).forEach(([vend, d]) => {
@@ -1520,8 +1513,8 @@ function computeVendProjections() {
         ? base.map(p => target * p / baseTotal)
         : [target / 3, target / 3, target / 3];
     } else {
-      // Vendor's multiplicative share + its proportional slice of the
-      // zero-base "extra" (distributed by this vendor's share of the company total)
+      // Vendor's own slice + its proportional share of the additive
+      // marca-override delta (distributed by this vendor's size)
       proj = baseTotals[vend].map((v, i) => {
         const share = grandBaseTotal[i] > 0 ? v / grandBaseTotal[i] : 0;
         return v + marcaExtra[i] * share;
@@ -1558,7 +1551,7 @@ function computeMarcaProjections() {
     const ov = state.marcaOverrides[marca];
     let proj;
     if (ov) {
-      // Use exact override values — do NOT rescale these
+      // Use exact override values — additive model: does NOT affect other brands
       proj = [...ov];
     } else {
       const adj = 1 + (state.adjustments.marcas[marca] || 0) / 100;
@@ -1573,13 +1566,14 @@ function computeMarcaProjections() {
     };
   });
 
-  const vendProj   = computeVendProjections();
-  const vendGrand  = [0,1,2].map(i => Object.values(vendProj).reduce((s,v)=>s+v.proj[i],0));
-
-  const hasAnyOv   = Object.keys(state.marcaOverrides).length > 0;
+  const hasAnyOv = Object.keys(state.marcaOverrides).length > 0 ||
+                    Object.values(state.adjustments.marcas).some(v => v !== 0);
 
   if (!hasAnyOv) {
-    // No overrides — scale all brands to match vendor total (original behavior)
+    // No adjustments active — scale marca totals to match vendor totals exactly
+    // (corrects tiny rounding/aggregation differences between the two data paths)
+    const vendProj   = computeVendProjections();
+    const vendGrand  = [0,1,2].map(i => Object.values(vendProj).reduce((s,v)=>s+v.proj[i],0));
     const marcaGrand = [0,1,2].map(i => Object.values(raw).reduce((s,v)=>s+v.proj[i],0));
     const result = {};
     Object.entries(raw).forEach(([marca, d]) => {
@@ -1594,30 +1588,12 @@ function computeMarcaProjections() {
     return result;
   }
 
-  // With overrides: overridden brands = exact values, others fill the remainder
-  const ovGrand    = [0,1,2].map(i =>
-    Object.values(raw).filter(d => d.hasOverride).reduce((s,d) => s + d.proj[i], 0));
-  const nonOvRaw   = [0,1,2].map(i =>
-    Object.values(raw).filter(d => !d.hasOverride).reduce((s,d) => s + d.proj[i], 0));
-
-  const result = {};
-  Object.entries(raw).forEach(([marca, d]) => {
-    if (d.hasOverride) {
-      // Exact — no scaling
-      result[marca] = { ...d };
-    } else {
-      // Fill remainder proportionally
-      const remainder = [0,1,2].map(i => Math.max(0, vendGrand[i] - ovGrand[i]));
-      result[marca] = {
-        proj: d.proj.map((v,i) => nonOvRaw[i] > 0 ? v * remainder[i] / nonOvRaw[i] : 0),
-        histQ2_2025: d.histQ2_2025,
-        histQ2_2024: d.histQ2_2024,
-        hasOverride: false,
-        portafolio: d.portafolio
-      };
-    }
-  });
-  return result;
+  // Additive model: each marca keeps its own value exactly as computed above —
+  // overridden brands show the override, non-overridden brands show their
+  // untouched base. Nothing gets redistributed; the grand total simply grows
+  // by the override's delta (this matches exactly how computeVendProjections
+  // distributes that same delta as "extra" across vendors).
+  return raw;
 }
 
 function computePortProjections() {
