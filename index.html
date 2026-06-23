@@ -605,6 +605,29 @@ body {
     </div>
   </div>
 </div>
+
+<div id="marcaBulkModal" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px);align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border-radius:16px;padding:28px;max-width:640px;width:92%;max-height:85vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,0.3)">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+      <div style="width:36px;height:36px;border-radius:10px;background:#eff6ff;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+      </div>
+      <div style="font-size:17px;font-weight:700;color:var(--text)">Carga Masiva — Meta por Marca</div>
+    </div>
+    <div style="font-size:12px;color:var(--text2);line-height:1.6;margin:8px 0 14px">
+      Pegá los datos copiados de Excel (3 columnas: <strong>Marca, Meta Jul, Meta Ago, Meta Sep</strong>, separadas por tabulación o coma). Cada marca encontrada actualiza su meta exactamente como si la editaras manualmente — el resto del modelo (Vendedores, Portafolio, Clientes) se recalcula automáticamente.
+    </div>
+    <textarea id="marcaBulkTextarea" placeholder="3M&#9;12500000&#9;13200000&#9;11800000
+Phelps Dodge&#9;8400000&#9;9100000&#9;8700000
+..." style="width:100%;min-height:200px;font-family:var(--font-mono);font-size:12px;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);resize:vertical"></textarea>
+    <div id="marcaBulkPreview" style="margin-top:10px;font-size:12px;color:var(--text2);min-height:18px"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+      <button class="btn btn-outline" onclick="closeMarcaBulkLoad()">Cancelar</button>
+      <button class="btn" onclick="applyMarcaBulkLoad()" style="background:#1d4ed8;color:#fff">Aplicar carga masiva</button>
+    </div>
+  </div>
+</div>
+
 <div id="aiModal" style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.45);backdrop-filter:blur(4px)">
   <div id="aiPanel" style="position:absolute;right:0;top:0;bottom:0;width:min(680px,95vw);background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;box-shadow:-8px 0 40px rgba(0,0,0,0.15);overflow:hidden;">
 
@@ -792,6 +815,7 @@ body {
         <div class="card-title">Meta por Marca — Q3 2026
           <span style="font-size:11px;font-weight:400;color:var(--text3);margin-left:10px">✏️ Clic en Meta Jul/Ago/Sep/Total Q3 para editar directamente</span>
           <button onclick="clearAllMarcaOverrides()" style="margin-left:12px;padding:3px 10px;font-size:11px;border:1px solid #fca5a5;background:#fef2f2;color:#dc2626;border-radius:6px;cursor:pointer">✕ Limpiar ajustes de metas</button>
+          <button onclick="openMarcaBulkLoad()" style="margin-left:6px;padding:3px 10px;font-size:11px;border:1px solid #93c5fd;background:#eff6ff;color:#1d4ed8;border-radius:6px;cursor:pointer">📋 Carga Masiva</button>
         </div>
         <div class="card-sub">109 marcas · Con factores de ajuste</div>
       </div>
@@ -5514,6 +5538,89 @@ function clearAllMarcaOverrides() {
   render();
   saveState();
   showToast('✅ Todos los ajustes de marcas eliminados');
+}
+
+function openMarcaBulkLoad() {
+  document.getElementById('marcaBulkTextarea').value = '';
+  document.getElementById('marcaBulkPreview').textContent = '';
+  document.getElementById('marcaBulkModal').style.display = 'flex';
+}
+
+function closeMarcaBulkLoad() {
+  document.getElementById('marcaBulkModal').style.display = 'none';
+}
+
+function parseMarcaBulkRows(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  const norm = s => s.trim().toLowerCase();
+  const marcaKeys = Object.keys(RAW_DATA.marcas || {});
+  const results = [];
+  lines.forEach(line => {
+    const cols = line.includes('\t') ? line.split('\t') : line.split(',');
+    if (cols.length < 4) { results.push({ raw: line, error: 'Formato inválido (se esperan 4 columnas)' }); return; }
+    const nameRaw = cols[0].trim();
+    const nums = cols.slice(1, 4).map(c => parseFloat(String(c).replace(/[^\d.-]/g, '')));
+    if (nums.some(isNaN)) { results.push({ raw: line, error: 'Montos no numéricos' }); return; }
+
+    // Match marca name: exact first, then case-insensitive, then partial contains
+    let matchKey = marcaKeys.find(k => k === nameRaw);
+    if (!matchKey) matchKey = marcaKeys.find(k => norm(k) === norm(nameRaw));
+    if (!matchKey) matchKey = marcaKeys.find(k => norm(k).includes(norm(nameRaw)) || norm(nameRaw).includes(norm(k)));
+
+    if (!matchKey) { results.push({ raw: line, nameRaw, error: 'Marca no encontrada' }); return; }
+    results.push({ raw: line, nameRaw, matchKey, jul: nums[0], ago: nums[1], sep: nums[2] });
+  });
+  return results;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const ta = document.getElementById('marcaBulkTextarea');
+  if (ta) ta.addEventListener('input', () => {
+    const parsed = parseMarcaBulkRows(ta.value);
+    const ok = parsed.filter(r => !r.error).length;
+    const err = parsed.filter(r => r.error).length;
+    const prev = document.getElementById('marcaBulkPreview');
+    if (parsed.length === 0) { prev.textContent = ''; return; }
+    prev.innerHTML = `<span style="color:#059669;font-weight:600">${ok} marca${ok!==1?'s':''} reconocida${ok!==1?'s':''}</span>` +
+      (err > 0 ? ` &nbsp;·&nbsp; <span style="color:#dc2626;font-weight:600">${err} con error</span>` : '');
+  });
+});
+
+function applyMarcaBulkLoad() {
+  const text = document.getElementById('marcaBulkTextarea').value;
+  const parsed = parseMarcaBulkRows(text);
+  const valid = parsed.filter(r => !r.error);
+  const errors = parsed.filter(r => r.error);
+
+  if (valid.length === 0) {
+    alert('No se encontró ninguna fila válida. Revisá el formato: Marca [TAB] Jul [TAB] Ago [TAB] Sep');
+    return;
+  }
+
+  valid.forEach(r => {
+    const marcaData = RAW_DATA.marcas[r.matchKey];
+    const base = marcaData ? getProyeccion(marcaData) : [0,0,0];
+    const baseTotal = base.reduce((a,b)=>a+b,0);
+    const newProj = [r.jul, r.ago, r.sep];
+    const newTotal = newProj.reduce((a,b)=>a+b,0);
+
+    state.marcaOverrides[r.matchKey] = newProj;
+    if (baseTotal > 0) {
+      state.adjustments.marcas[r.matchKey] = (newTotal / baseTotal - 1) * 100;
+    }
+  });
+
+  render();
+  saveState();
+  closeMarcaBulkLoad();
+
+  let msg = `✅ ${valid.length} marca${valid.length!==1?'s':''} actualizada${valid.length!==1?'s':''} por carga masiva`;
+  if (errors.length > 0) msg += ` (${errors.length} fila${errors.length!==1?'s':''} con error)`;
+  showToast(msg);
+
+  if (errors.length > 0) {
+    console.warn('[Carga Masiva Marcas] Filas con error:', errors);
+  }
 }
 
 function resetData() {
