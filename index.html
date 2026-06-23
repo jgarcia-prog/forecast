@@ -3754,6 +3754,47 @@ async function _doExportExcel(exportBtn) {
   const [wJul, wAgo, wSep] = getBudgetMonthlyWeights();
   const mProj = [0,1,2].map(i => Object.values(vendProj).reduce((s,v)=>s+v.proj[i],0));
 
+  // ── FETCH GRANULAR (Vendedor × Cliente × Marca, con redistribución de portafolio) ──
+  // Esto alimenta las hojas 2, 8 y 9 — todas comparten la MISMA fuente de verdad,
+  // ya redistribuida al vendedor secundario y escalada al modelo Q3 2026.
+  if (exportBtn) exportBtn.textContent = '⏳ Cargando datos granulares...';
+  const hasSupabase = typeof SUPA_URL !== 'undefined' && SUPA_URL;
+  let vcmData = [];
+  if (hasSupabase) {
+    try {
+      const res = await fetch(`${SUPA_URL}/rest/v1/rpc/get_vcm_export?limit=50000`, {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json', 'apikey':SUPA_KEY, 'Authorization':`Bearer ${SUPA_KEY}`, 'Prefer':'count=none' },
+        body: '{}'
+      });
+      const data = await res.json();
+      if (Array.isArray(data)) vcmData = data;
+    } catch(e) {
+      console.warn('VCM export fetch error:', e);
+    }
+  }
+
+  // Escalar cada fila al modelo: la proyección Q3 2026 real del vendedor (vendProj)
+  // se distribuye proporcionalmente según el peso histórico (hist_q3_2025) de cada
+  // combinación cliente×marca dentro de ese vendedor — así el total por vendedor
+  // siempre coincide exactamente con "Meta por Zona de Venta".
+  const normVend = s => (s||'').replace(/^\d+-/,'').trim().toLowerCase();
+  const vendModelTotal = {};
+  Object.entries(vendProj).forEach(([v,d]) => { vendModelTotal[v] = d.proj.reduce((a,b)=>a+b,0); });
+  const vendHistSum = {};
+  vcmData.forEach(r => { vendHistSum[r.vendedor] = (vendHistSum[r.vendedor]||0) + (Number(r.hist_q3_2025)||0); });
+
+  vcmData.forEach(r => {
+    let modelTotal = vendModelTotal[r.vendedor];
+    if (modelTotal === undefined) {
+      const key = Object.keys(vendModelTotal).find(k => normVend(k) === normVend(r.vendedor));
+      modelTotal = key ? vendModelTotal[key] : 0;
+    }
+    const histSum = vendHistSum[r.vendedor] || 1;
+    const h25 = Number(r.hist_q3_2025) || 0;
+    r.proyectado_q3_2026 = histSum > 0 ? (h25 / histSum) * modelTotal : 0;
+  });
+
   // ── HOJA 1: RESUMEN ──────────────────────────────────────────────────────
   const resRows = [
     ['CÁLCULO DE METAS Q3 2026 — COFERSA', '', '', '', ''],
@@ -3791,21 +3832,32 @@ async function _doExportExcel(exportBtn) {
   });
   XLSX.utils.book_append_sheet(wb, wsRes, '1_Resumen');
 
-  // ── HOJA 2: CLIENTES ─────────────────────────────────────────────────────
-  const clH = ['#','Razón Social','Alias Comercial','Hist Q3 2024 ¢','Hist Q3 2025 ¢',
+  // ── HOJA 2: CLIENTES (Alias Comercial + Código Cliente, granular por sucursal) ──
+  const clH = ['#','Alias Comercial','Código Cliente','Hist Q3 2024 ¢','Hist Q3 2025 ¢',
     'Meta Jul 2026 ¢','Meta Ago 2026 ¢','Meta Sep 2026 ¢','Total Q3 2026 ¢','Var %'];
-  const clSorted = Object.entries(clientProj)
-    .map(([cl,d])=>({cl,...d,total:d.proj.reduce((a,b)=>a+b,0)}))
-    .sort((a,b)=>b.total-a.total);
+  const byAliasCl = {};
+  vcmData.forEach(r => {
+    if (!byAliasCl[r.alias]) byAliasCl[r.alias] = { cod: r.cod_cliente, h24:0, h25:0, meta:0 };
+    byAliasCl[r.alias].h24  += Number(r.hist_q3_2024) || 0;
+    byAliasCl[r.alias].h25  += Number(r.hist_q3_2025) || 0;
+    byAliasCl[r.alias].meta += r.proyectado_q3_2026 || 0;
+    if (!byAliasCl[r.alias].cod && r.cod_cliente) byAliasCl[r.alias].cod = r.cod_cliente;
+  });
+  const clSorted = Object.entries(byAliasCl)
+    .map(([alias,d]) => ({ alias, ...d }))
+    .sort((a,b)=>b.meta-a.meta);
   const clRows = [clH, ...clSorted.map((x,i)=>{
-    const v=x.histQ2_2025>0?(x.total-x.histQ2_2025)/x.histQ2_2025:0;
-    const nombre = RAW_DATA.clientes[x.cl]?.nombre || '';
-    return [i+1, nombre||x.cl, nombre?x.cl:'', x.histQ2_2024, x.histQ2_2025, x.proj[0], x.proj[1], x.proj[2], x.total, v];
+    const v = x.h25>0 ? (x.meta-x.h25)/x.h25 : 0;
+    // Distribute Q3 total across months using the global model weights
+    const wMonths = totalProj>0 ? [mProj[0]/totalProj, mProj[1]/totalProj, mProj[2]/totalProj] : [1/3,1/3,1/3];
+    return [i+1, x.alias, x.cod||'', Math.round(x.h24), Math.round(x.h25),
+      Math.round(x.meta*wMonths[0]), Math.round(x.meta*wMonths[1]), Math.round(x.meta*wMonths[2]),
+      Math.round(x.meta), v];
   })];
-  XLSX.utils.book_append_sheet(wb, mkWS(clRows, [5,45,45,18,18,18,18,18,20,10], [3,4,5,6,7,8], [9]), '2_Clientes');
+  XLSX.utils.book_append_sheet(wb, mkWS(clRows, [5,40,18,18,18,18,18,18,20,10], [3,4,5,6,7,8], [9]), '2_Clientes');
 
   // ── HOJA 3: MARCAS ───────────────────────────────────────────────────────
-  const mH = ['Portafolio','Marca','Hist Q3 2024 ¢','Hist Q3 2025 ¢',
+  const mH = ['Marca','Hist Q3 2024 ¢','Hist Q3 2025 ¢',
     'Meta Jul 2026 ¢','Meta Ago 2026 ¢','Meta Sep 2026 ¢','Total Q3 2026 ¢','Var %','% Part.'];
   const mSorted = Object.entries(marcaProj)
     .map(([m,d])=>({m,...d,total:d.proj.reduce((a,b)=>a+b,0)}))
@@ -3813,19 +3865,12 @@ async function _doExportExcel(exportBtn) {
   const mGrand = mSorted.reduce((s,x)=>s+x.total,0)||1;
   const mRows = [mH, ...mSorted.map(x=>{
     const v=x.histQ2_2025>0?(x.total-x.histQ2_2025)/x.histQ2_2025:0;
-    return [RAW_DATA.marcas[x.m]?.portafolio||'', x.m, x.histQ2_2024, x.histQ2_2025, x.proj[0], x.proj[1], x.proj[2], x.total, v, x.total/mGrand];
+    return [x.m, x.histQ2_2024, x.histQ2_2025, x.proj[0], x.proj[1], x.proj[2], x.total, v, x.total/mGrand];
   })];
-  XLSX.utils.book_append_sheet(wb, mkWS(mRows, [14,32,18,18,18,18,18,20,10,10], [2,3,4,5,6,7], [8,9]), '3_Marcas');
+  XLSX.utils.book_append_sheet(wb, mkWS(mRows, [32,18,18,18,18,18,20,10,10], [1,2,3,4,5,6], [7,8]), '3_Marcas');
 
-  // ── HOJA 4: PORTAFOLIO ───────────────────────────────────────────────────
-  const pGrand = Object.values(portProj).reduce((s,d)=>s+d.proj.reduce((a,b)=>a+b,0),0)||1;
-  const pRows = [['Portafolio','Hist Q3 2024 ¢','Hist Q3 2025 ¢','Meta Jul 2026 ¢','Meta Ago 2026 ¢','Meta Sep 2026 ¢','Total Q3 2026 ¢','Var %','% Part.'],
-    ...Object.entries(portProj).map(([p,d])=>{
-      const tot=d.proj.reduce((a,b)=>a+b,0);
-      const v=d.histQ2_2025>0?(tot-d.histQ2_2025)/d.histQ2_2025:0;
-      return [p, d.histQ2_2024, d.histQ2_2025, d.proj[0], d.proj[1], d.proj[2], tot, v, tot/pGrand];
-    })];
-  XLSX.utils.book_append_sheet(wb, mkWS(pRows, [16,18,18,18,18,18,20,10,10], [1,2,3,4,5,6], [7,8]), '4_Portafolio');
+  // (Hoja 4 "Portafolio" eliminada por solicitud)
+
 
   // ── HOJA 5: ZONAS DE VENTA ───────────────────────────────────────────────
   const vH = ['Zona de Venta','Portafolio','Hist Q3 2024 ¢','Hist Q3 2025 ¢','Prom Mensual ¢',
@@ -3839,7 +3884,7 @@ async function _doExportExcel(exportBtn) {
     const adj=(state.adjustments.vendedores[x.v]||0)/100;
     return [x.v.replace(/^\d+-/,'').trim(), vendPort[x.v]||'Portafolio 0', x.histQ2_2024, x.histQ2_2025, x.avgMonthly, x.proj[0], x.proj[1], x.proj[2], x.total, va, adj];
   })];
-  XLSX.utils.book_append_sheet(wb, mkWS(vRows, [35,14,18,18,18,18,18,18,20,10,10], [2,3,4,5,6,7,8], [9,10]), '5_Zonas_Venta');
+  XLSX.utils.book_append_sheet(wb, mkWS(vRows, [35,14,18,18,18,18,18,18,20,10,10], [2,3,4,5,6,7,8], [9,10]), '4_Zonas_Venta');
 
   // ── HOJA 6: ZONA VTA - VENDEDORES (colapsable expandido) ─────────────────
   const pp = computePortProjections();
@@ -3849,13 +3894,13 @@ async function _doExportExcel(exportBtn) {
     vpShares[p]=[0,1,2].map(i=>portGrandPP[i]>0?pp[p]?.proj[i]/portGrandPP[i]:0);
   });
   const histPortGrand = Object.values(pp).reduce((s,d)=>s+d.histQ2_2025,0)||1;
-  const zpH = ['Nivel','Zona / Vendedor','Portafolio','Hist Q3 2024 ¢','Hist Q3 2025 ¢',
+  const zpH = ['Nivel','Zona / Vendedor','Hist Q3 2024 ¢','Hist Q3 2025 ¢',
     'Meta Jul 2026 ¢','Meta Ago 2026 ¢','Meta Sep 2026 ¢','Total Q3 2026 ¢','Var %','% Part.'];
   const grandVP = vSorted.reduce((s,x)=>s+x.total,0)||1;
   const zpRows = [zpH];
   vSorted.forEach(x=>{
     const va=x.histQ2_2025>0?(x.total-x.histQ2_2025)/x.histQ2_2025:0;
-    zpRows.push(['ZONA', x.v.replace(/^\d+-/,'').trim(), vendPort[x.v]||'Portafolio 0', x.histQ2_2024, x.histQ2_2025, x.proj[0], x.proj[1], x.proj[2], x.total, va, x.total/grandVP]);
+    zpRows.push(['ZONA', x.v.replace(/^\d+-/,'').trim(), x.histQ2_2024, x.histQ2_2025, x.proj[0], x.proj[1], x.proj[2], x.total, va, x.total/grandVP]);
     ['Portafolio 1','Portafolio 2','Portafolio 3'].forEach((port,pi)=>{
       const label=['Vendedor 1','Vendedor 2','Vendedor 3'][pi];
       const sh=vpShares[port];
@@ -3864,10 +3909,10 @@ async function _doExportExcel(exportBtn) {
       const hSh=pp[port]?(pp[port].histQ2_2025/histPortGrand):0;
       const pH25=x.histQ2_2025*hSh, pH24=x.histQ2_2024*hSh;
       const pVar=pH25>0?(pTot-pH25)/pH25:0;
-      zpRows.push(['  '+label, '  '+x.v.replace(/^\d+-/,'').trim(), port, Math.round(pH24), Math.round(pH25), Math.round(pAbr), Math.round(pMay), Math.round(pJun), Math.round(pTot), pVar, pTot/grandVP]);
+      zpRows.push(['  '+label, '  '+x.v.replace(/^\d+-/,'').trim(), Math.round(pH24), Math.round(pH25), Math.round(pAbr), Math.round(pMay), Math.round(pJun), Math.round(pTot), pVar, pTot/grandVP]);
     });
   });
-  XLSX.utils.book_append_sheet(wb, mkWS(zpRows, [10,35,14,18,18,18,18,18,20,10,10], [3,4,5,6,7,8], [9,10]), '6_Zona_Vendedores');
+  XLSX.utils.book_append_sheet(wb, mkWS(zpRows, [10,35,18,18,18,18,18,20,10,10], [2,3,4,5,6,7], [8,9]), '5_Zona_Vendedores');
 
   // ── HOJA 7: VEND-CLIENTE (con Razón Social + Código/Alias) ──────────────
   const hasMap = RAW_DATA.vendedorClientes&&Object.keys(RAW_DATA.vendedorClientes).length>0;
@@ -3892,7 +3937,7 @@ async function _doExportExcel(exportBtn) {
       vcRows.push(['  CLIENTE','  '+x.v.replace(/^\d+-/,'').trim(), nombre||cl, nombre?cl:'', Math.round(cH24), Math.round(cH25), Math.round(cAbr), Math.round(cMay), Math.round(cJun), Math.round(cTot), cVar, cTot/vcGrand]);
     });
   });
-  XLSX.utils.book_append_sheet(wb, mkWS(vcRows, [10,35,40,30,18,18,18,18,18,20,10,10], [4,5,6,7,8,9], [10,11]), '7_Vend_Cliente');
+  XLSX.utils.book_append_sheet(wb, mkWS(vcRows, [10,35,40,30,18,18,18,18,18,20,10,10], [4,5,6,7,8,9], [10,11]), '6_Vend_Cliente');
 
   // ── HOJA 8: VEND-MARCA ───────────────────────────────────────────────────
   const vmH = ['Nivel','Zona de Venta','Portafolio','Marca','Hist Q3 2024 ¢','Hist Q3 2025 ¢',
@@ -3915,39 +3960,14 @@ async function _doExportExcel(exportBtn) {
       vmRows.push(['  MARCA','  '+x.v.replace(/^\d+-/,'').trim(), RAW_DATA.marcas[marca]?.portafolio||'', '  '+marca, Math.round(mH24), Math.round(mH25), Math.round(mAbr), Math.round(mMay), Math.round(mJun), Math.round(mT), mVar, mT/vmGrand]);
     });
   });
-  XLSX.utils.book_append_sheet(wb, mkWS(vmRows, [10,35,14,30,18,18,18,18,18,20,10,10], [4,5,6,7,8,9], [10,11]), '8_Vend_Marca');
+  XLSX.utils.book_append_sheet(wb, mkWS(vmRows, [10,35,14,30,18,18,18,18,18,20,10,10], [4,5,6,7,8,9], [10,11]), '7_Vend_Marca');
 
-  // ── HOJA 9: VEND-CLIENTE-MARCA (fetch completo desde Supabase) ───────────
+  // ── HOJA 8: VEND-CLIENTE-MARCA (usa vcmData ya cargado, escalado al modelo) ──
   const vcmH = ['Nivel','Zona de Venta','Razón Social','Código Cliente','Alias','Portafolio','Marca',
     'Hist Q3 2024 ¢','Hist Q3 2025 ¢','Meta Q3 2026 ¢','Var %'];
   const vcmRows = [vcmH];
 
-  const hasSupabase = typeof SUPA_URL !== 'undefined' && SUPA_URL;
-  let vcmData = [];
-
-  if (hasSupabase) {
-    // Fetch all rows in pages of 10000
-    if (exportBtn) exportBtn.textContent = '⏳ Cargando VCM...';
-    try {
-      const res = await fetch(`${SUPA_URL}/rest/v1/rpc/get_vcm_export?limit=50000`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': SUPA_KEY,
-          'Authorization': `Bearer ${SUPA_KEY}`,
-          'Prefer': 'count=none'
-        },
-        body: '{}'
-      });
-      const data = await res.json();
-      if (Array.isArray(data)) vcmData = data;
-    } catch(e) {
-      console.warn('VCM export fetch error:', e);
-    }
-  }
-
   if (vcmData.length > 0) {
-    // Group by vendedor → alias → marcas
     const byVend = {};
     vcmData.forEach(r => {
       if (!byVend[r.vendedor]) byVend[r.vendedor] = {};
@@ -3955,32 +3975,28 @@ async function _doExportExcel(exportBtn) {
       byVend[r.vendedor][r.alias].marcas.push(r);
     });
 
-    // Sort vendors alphabetically
     Object.keys(byVend).sort((a,b)=>a.replace(/^\d+-/,'').trim().localeCompare(b.replace(/^\d+-/,'').trim(),'es')).forEach(vend => {
-      // Vendor totals
       const vendClients = byVend[vend];
       const vendH24 = Object.values(vendClients).reduce((s,c)=>s+c.marcas.reduce((ss,m)=>ss+(Number(m.hist_q3_2024)||0),0),0);
       const vendH25 = Object.values(vendClients).reduce((s,c)=>s+c.marcas.reduce((ss,m)=>ss+(Number(m.hist_q3_2025)||0),0),0);
-      const vendMeta = Object.values(vendClients).reduce((s,c)=>s+c.marcas.reduce((ss,m)=>ss+(Number(m.meta_q3)||0),0),0);
+      const vendMeta = Object.values(vendClients).reduce((s,c)=>s+c.marcas.reduce((ss,m)=>ss+(m.proyectado_q3_2026||0),0),0);
       const vendVar = vendH25>0?(vendMeta-vendH25)/vendH25:0;
       vcmRows.push(['ZONA', vend.replace(/^\d+-/,'').trim(), '','','','','', Math.round(vendH24), Math.round(vendH25), Math.round(vendMeta), vendVar]);
 
-      // Clients sorted by hist_q3_2025 desc
       Object.entries(vendClients)
         .sort((a,b)=>b[1].marcas.reduce((s,m)=>s+(Number(m.hist_q3_2025)||0),0)-a[1].marcas.reduce((s,m)=>s+(Number(m.hist_q3_2025)||0),0))
         .forEach(([alias, cd]) => {
           const cH24 = cd.marcas.reduce((s,m)=>s+(Number(m.hist_q3_2024)||0),0);
           const cH25 = cd.marcas.reduce((s,m)=>s+(Number(m.hist_q3_2025)||0),0);
-          const cMeta= cd.marcas.reduce((s,m)=>s+(Number(m.meta_q3)||0),0);
+          const cMeta= cd.marcas.reduce((s,m)=>s+(m.proyectado_q3_2026||0),0);
           if (cMeta < 10000) return;
           const cVar = cH25>0?(cMeta-cH25)/cH25:0;
           vcmRows.push(['  CLIENTE', '  '+vend.replace(/^\d+-/,'').trim(), cd.nombre||alias, cd.cod||'', alias, '','', Math.round(cH24), Math.round(cH25), Math.round(cMeta), cVar]);
 
-          // Marcas sorted by hist_q3_2025 desc
           cd.marcas
             .sort((a,b)=>(Number(b.hist_q3_2025)||0)-(Number(a.hist_q3_2025)||0))
             .forEach(m => {
-              const mH24=Number(m.hist_q3_2024)||0, mH25=Number(m.hist_q3_2025)||0, mMeta=Number(m.meta_q3)||0;
+              const mH24=Number(m.hist_q3_2024)||0, mH25=Number(m.hist_q3_2025)||0, mMeta=m.proyectado_q3_2026||0;
               if(mMeta<1000)return;
               const mVar=mH25>0?(mMeta-mH25)/mH25:0;
               vcmRows.push(['    MARCA','    '+vend.replace(/^\d+-/,'').trim(), cd.nombre||alias, cd.cod||'', alias, m.portafolio||'', m.marca||'', Math.round(mH24), Math.round(mH25), Math.round(mMeta), mVar]);
@@ -3990,9 +4006,9 @@ async function _doExportExcel(exportBtn) {
   } else {
     vcmRows.push(['(Sin datos — cargá desde ⚡ Supabase para ver el desglose)', '','','','','','','','','']);
   }
-  XLSX.utils.book_append_sheet(wb, mkWS(vcmRows, [10,35,40,16,30,14,30,18,18,20,10], [7,8,9], [10]), '9_Vend_Cliente_Marca');
+  XLSX.utils.book_append_sheet(wb, mkWS(vcmRows, [10,35,40,16,30,14,30,18,18,20,10], [7,8,9], [10]), '8_Vend_Cliente_Marca');
 
-  // ── HOJA 10: BASE DE DATOS (formato relacional, una fila por mes/cliente/marca/vendedor) ──
+  // ── HOJA 9: BASE DE DATOS (formato relacional, una fila por mes/cliente/marca/vendedor) ──
   if (exportBtn) exportBtn.textContent = '⏳ Generando Base de Datos...';
 
   const formatVendorKey = (vendedorRaw) => {
@@ -4026,11 +4042,11 @@ async function _doExportExcel(exportBtn) {
 
   const bdRows = [['Fecha','Empresa','ClienteKey','ArticuloKey','VendedorKey','Monto_Meta_Local','Monto_Meta_USD']];
   const vendProjAll = computeVendProjections();
-  const normV = s => s.replace(/^\d+-/,'').trim().toLowerCase();
+  const normV = s => (s||'').replace(/^\d+-/,'').trim().toLowerCase();
 
   if (vcmData.length > 0) {
     vcmData.forEach(r => {
-      const metaQ3 = Number(r.meta_q3) || 0;
+      const metaQ3 = r.proyectado_q3_2026 || 0;
       if (metaQ3 <= 0) return;
 
       // Resolve monthly weights for this row's vendedor (fuzzy match against vendProjAll)
@@ -4088,7 +4104,7 @@ async function _doExportExcel(exportBtn) {
     }
   }
 
-  XLSX.utils.book_append_sheet(wb, wsBD, '10_Base_de_Datos');
+  XLSX.utils.book_append_sheet(wb, wsBD, '9_Base_de_Datos');
 
   if (exportBtn) exportBtn.textContent = '⏳ Escribiendo Excel...';
   XLSX.writeFile(wb, 'Forecast_COFERSA_Q3_2026.xlsx');
