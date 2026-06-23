@@ -5780,6 +5780,7 @@ function doReset() {
 
   // 2. Reset all adjustments
   state.adjustments = { vendedores: {}, marcas: {}, portafolios: {} };
+  state.marcaOverrides = {};
   state.reasignaciones = [];
   window._originalVendedorClientes = null;
   state.blendWeight = 0.60;
