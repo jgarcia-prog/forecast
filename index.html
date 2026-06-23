@@ -1461,43 +1461,63 @@ function getProyeccion(d) {
   return projectQ2JS(d.historico);
 }
 
-function getMarcaAdjFactor() {
-  // ADDITIVE model: overriding a marca does NOT redistribute/shrink other
-  // brands. Other brands keep their base values untouched; the override's
-  // delta (new - base) is added on top of the company total, increasing it.
-  const hasAdj = Object.values(state.adjustments.marcas).some(v => v !== 0);
-  const hasOv  = Object.keys(state.marcaOverrides).length > 0;
-  if (!hasAdj && !hasOv) return { factor: [1, 1, 1], extra: [0, 0, 0] };
+function getMarcaVendorExtra(baseTotals, grandBaseTotal) {
+  // For each marca with an active override/ajuste, distribute its additive
+  // delta ONLY across the vendors that actually sell that brand, in
+  // proportion to each vendor's real historical participation in it
+  // (RAW_DATA.vendMarcaHist, from get_vend_marca_hist). Vendors with zero
+  // historical sales of that brand are left untouched — subiendo una marca
+  // ya no infla parejo a todos, solo a quienes la venden.
+  // If a brand has no granular vendor-marca data yet, fall back to
+  // splitting by each vendor's overall size (old behavior) so the company
+  // total still reconciles with "Meta por Zona de Venta".
+  const vendorExtra = {};
+  Object.keys(RAW_DATA.vendedores).forEach(v => { vendorExtra[v] = [0, 0, 0]; });
 
-  let extra = [0, 0, 0];
   Object.entries(RAW_DATA.marcas).forEach(([marca, d]) => {
-    const base = getProyeccion(d);
-    if (state.marcaOverrides[marca]) {
-      const ov = state.marcaOverrides[marca];
-      base.forEach((v, i) => { extra[i] += (ov[i] - v); }); // pure delta, additive
-    } else if (state.adjustments.marcas[marca]) {
-      const pct = state.adjustments.marcas[marca] / 100;
-      base.forEach((v, i) => { extra[i] += v * pct; }); // % adjustment also additive
+    const ov  = state.marcaOverrides[marca];
+    const pct = state.adjustments.marcas[marca] || 0;
+    if (!ov && !pct) return;
+
+    const base  = getProyeccion(d);
+    const delta = ov ? base.map((v, i) => ov[i] - v) : base.map(v => v * pct / 100);
+
+    const weights = RAW_DATA.vendMarcaHist && RAW_DATA.vendMarcaHist[marca];
+    const totalW  = weights ? Object.values(weights).reduce((s, w) => s + w, 0) : 0;
+
+    if (weights && totalW > 0) {
+      Object.entries(weights).forEach(([vend, w]) => {
+        if (!vendorExtra[vend]) vendorExtra[vend] = [0, 0, 0];
+        const share = w / totalW;
+        delta.forEach((dv, i) => { vendorExtra[vend][i] += dv * share; });
+      });
+    } else {
+      // Sin data granular para esta marca todavía → reparto por tamaño general
+      Object.keys(vendorExtra).forEach(vend => {
+        delta.forEach((dv, i) => {
+          const share = grandBaseTotal[i] > 0 ? (baseTotals[vend][i] || 0) / grandBaseTotal[i] : 0;
+          vendorExtra[vend][i] += dv * share;
+        });
+      });
     }
   });
-  return { factor: [1, 1, 1], extra };
+  return vendorExtra;
 }
 
 function computeVendProjections() {
-  const { factor: marcaFactor, extra: marcaExtra } = getMarcaAdjFactor();
-
-  // Pre-compute each vendor's base total (own adjustment only) to distribute
-  // the additive marca-override "extra" proportionally by vendor size —
-  // additive model: other brands/vendors are untouched, the override's delta
-  // simply grows the company total
+  // Vendor's own base total (own adjustment only, sin nada de marcas)
   const baseTotals = {};
   let grandBaseTotal = [0, 0, 0];
   Object.entries(RAW_DATA.vendedores).forEach(([vend, d]) => {
     const adj = 1 + (state.adjustments.vendedores[vend] || 0) / 100;
-    const t = getProyeccion(d).map((v, i) => v * adj * marcaFactor[i]);
+    const t = getProyeccion(d).map(v => v * adj);
     baseTotals[vend] = t;
     grandBaseTotal = grandBaseTotal.map((g, i) => g + t[i]);
   });
+
+  // Delta de marcas ajustadas, ruteado solo a los vendedores realmente
+  // expuestos a cada marca
+  const vendorExtra = getMarcaVendorExtra(baseTotals, grandBaseTotal);
 
   const result = {};
   Object.entries(RAW_DATA.vendedores).forEach(([vend, d]) => {
@@ -1512,20 +1532,11 @@ function computeVendProjections() {
       proj = baseTotal > 0
         ? base.map(p => target * p / baseTotal)
         : [target / 3, target / 3, target / 3];
-      // This vendor has a direct target override, but marca adjustments must
-      // still apply — add this vendor's proportional share of the additive
-      // marca-override delta on top, same as every other vendor
-      proj = proj.map((p, i) => {
-        const share = grandBaseTotal[i] > 0 ? baseTotals[vend][i] / grandBaseTotal[i] : 0;
-        return p + marcaExtra[i] * share;
-      });
+      // Vendedor con target directo, pero los ajustes de marca igual aplican
+      // si este vendedor vende esa(s) marca(s)
+      proj = proj.map((p, i) => p + (vendorExtra[vend]?.[i] || 0));
     } else {
-      // Vendor's own slice + its proportional share of the additive
-      // marca-override delta (distributed by this vendor's size)
-      proj = baseTotals[vend].map((v, i) => {
-        const share = grandBaseTotal[i] > 0 ? v / grandBaseTotal[i] : 0;
-        return v + marcaExtra[i] * share;
-      });
+      proj = baseTotals[vend].map((v, i) => v + (vendorExtra[vend]?.[i] || 0));
     }
 
     result[vend] = {
@@ -1556,16 +1567,20 @@ function computeMarcaProjections() {
   Object.entries(RAW_DATA.marcas).forEach(([marca, d]) => {
     const base = getProyeccion(d);
     const ov = state.marcaOverrides[marca];
-    let proj;
+    let proj, touched;
     if (ov) {
       // Use exact override values — additive model: does NOT affect other brands
       proj = [...ov];
+      touched = true;
     } else {
-      const adj = 1 + (state.adjustments.marcas[marca] || 0) / 100;
-      proj = base.map(v => v * adj);
+      const pct = state.adjustments.marcas[marca] || 0;
+      proj = base.map(v => v * (1 + pct / 100));
+      touched = pct !== 0;
     }
     raw[marca] = {
       proj,
+      base,
+      touched,
       histQ2_2025: getHistQ2(d.historico, 2025),
       histQ2_2024: getHistQ2(d.historico, 2024),
       hasOverride: !!ov,
@@ -1573,34 +1588,32 @@ function computeMarcaProjections() {
     };
   });
 
-  const hasAnyOv = Object.keys(state.marcaOverrides).length > 0 ||
-                    Object.values(state.adjustments.marcas).some(v => v !== 0);
+  // Always reconcile against vendor totals (source of truth) — exactly like
+  // computePortProjections does — so "Meta por Marca" always matches
+  // "Meta por Zona de Venta" / el KPI general, with or without active
+  // adjustments. Marcas the user touched (override or % ajuste) keep their
+  // exact value; the reconciliation gap between the marca-data-path and the
+  // vendor-data-path is absorbed proportionally only by the untouched marcas,
+  // so manual edits are never diluted.
+  const vendProj      = computeVendProjections();
+  const vendGrand     = [0,1,2].map(i => Object.values(vendProj).reduce((s,v)=>s+v.proj[i],0));
+  const touchedTotal  = [0,1,2].map(i => Object.values(raw).reduce((s,v)=>s+(v.touched ? v.proj[i] : 0),0));
+  const untouchedBase = [0,1,2].map(i => Object.values(raw).reduce((s,v)=>s+(v.touched ? 0 : v.base[i]),0));
 
-  if (!hasAnyOv) {
-    // No adjustments active — scale marca totals to match vendor totals exactly
-    // (corrects tiny rounding/aggregation differences between the two data paths)
-    const vendProj   = computeVendProjections();
-    const vendGrand  = [0,1,2].map(i => Object.values(vendProj).reduce((s,v)=>s+v.proj[i],0));
-    const marcaGrand = [0,1,2].map(i => Object.values(raw).reduce((s,v)=>s+v.proj[i],0));
-    const result = {};
-    Object.entries(raw).forEach(([marca, d]) => {
-      result[marca] = {
-        proj: d.proj.map((v,i) => marcaGrand[i] > 0 ? v * vendGrand[i] / marcaGrand[i] : 0),
-        histQ2_2025: d.histQ2_2025,
-        histQ2_2024: d.histQ2_2024,
-        hasOverride: false,
-        portafolio: d.portafolio
-      };
-    });
-    return result;
-  }
-
-  // Additive model: each marca keeps its own value exactly as computed above —
-  // overridden brands show the override, non-overridden brands show their
-  // untouched base. Nothing gets redistributed; the grand total simply grows
-  // by the override's delta (this matches exactly how computeVendProjections
-  // distributes that same delta as "extra" across vendors).
-  return raw;
+  const result = {};
+  Object.entries(raw).forEach(([marca, d]) => {
+    const proj = d.touched
+      ? d.proj
+      : d.base.map((v,i) => untouchedBase[i] > 0 ? v * (vendGrand[i] - touchedTotal[i]) / untouchedBase[i] : 0);
+    result[marca] = {
+      proj,
+      histQ2_2025: d.histQ2_2025,
+      histQ2_2024: d.histQ2_2024,
+      hasOverride: d.hasOverride,
+      portafolio: d.portafolio
+    };
+  });
+  return result;
 }
 
 function computePortProjections() {
@@ -1634,38 +1647,162 @@ function computePortProjections() {
   return result;
 }
 
-function computeClientProjections() {
-  // Step 1: raw client projections (no adjustments)
-  const raw = {};
+function buildVendMarcaGrid(vendProj, marcaProj) {
+  // Reconcilia, celda por celda (vendedor × marca), usando el peso histórico
+  // REAL de cada vendedor en cada marca (RAW_DATA.vendMarcaHist) como forma,
+  // pero forzando que:
+  //   • cada fila (vendedor) sume EXACTO el total de "Meta por Zona de Venta"
+  //   • cada columna (marca) sume EXACTO el total de "Meta por Marca"
+  // Esto es un ajuste proporcional iterativo (IPF / RAS) — converge a una
+  // matriz consistente con ambos márgenes, manteniendo las proporciones
+  // reales de quién vende qué. Si subís una marca, solo se mueven (en este
+  // grid) las celdas de los vendedores que de verdad la venden.
+  const vendKeys  = Object.keys(RAW_DATA.vendedores);
+  const marcaKeys = Object.keys(RAW_DATA.marcas);
+  const R = {}; vendKeys.forEach(v  => { R[v] = vendProj[v]  ? vendProj[v].proj  : [0,0,0]; });
+  const C = {}; marcaKeys.forEach(m => { C[m] = marcaProj[m] ? marcaProj[m].proj : [0,0,0]; });
+
+  const hasReal  = RAW_DATA.vendMarcaHist && Object.keys(RAW_DATA.vendMarcaHist).length > 0;
+  const vendPort = RAW_DATA.vendedorPortafolio || {};
+  const W = {};
+  vendKeys.forEach(v => {
+    W[v] = {};
+    marcaKeys.forEach(m => {
+      if (hasReal) {
+        W[v][m] = RAW_DATA.vendMarcaHist[m]?.[v]?.w || 0;
+      } else {
+        // Sin data granular todavía (p.ej. carga local de Excel) → fallback
+        // al criterio anterior: solo marcas del portafolio del vendedor
+        const port = vendPort[v] || vendPort[v.trim()] || null;
+        const marcaPort = RAW_DATA.marcas[m]?.portafolio || '';
+        const visible = !port || marcaPort.trim().toLowerCase() === port.trim().toLowerCase();
+        W[v][m] = visible ? (RAW_DATA.marcas[m]?.historico?.reduce((a,b)=>a+b,0) || 1) : 0;
+      }
+    });
+  });
+  // Marcas sin ningún peso histórico (p.ej. SKU nuevo) → semilla por tamaño de vendedor
+  marcaKeys.forEach(m => {
+    const colSeed = vendKeys.reduce((s,v) => s + W[v][m], 0);
+    if (colSeed === 0) {
+      const totalR0 = vendKeys.reduce((s,v) => s + R[v][0], 0);
+      vendKeys.forEach(v => { W[v][m] = totalR0 > 0 ? R[v][0] / totalR0 : 1; });
+    }
+  });
+
+  const grid = {};
+  vendKeys.forEach(v => { grid[v] = {}; marcaKeys.forEach(m => { grid[v][m] = [0,0,0]; }); });
+
+  for (let i = 0; i < 3; i++) {
+    const Mtx = {};
+    vendKeys.forEach(v => { Mtx[v] = {}; marcaKeys.forEach(m => { Mtx[v][m] = W[v][m]; }); });
+    for (let iter = 0; iter < 200; iter++) {
+      vendKeys.forEach(v => {
+        const rowSum = marcaKeys.reduce((s,m) => s + Mtx[v][m], 0);
+        if (rowSum > 0) { const f = R[v][i] / rowSum; marcaKeys.forEach(m => { Mtx[v][m] *= f; }); }
+      });
+      marcaKeys.forEach(m => {
+        const colSum = vendKeys.reduce((s,v) => s + Mtx[v][m], 0);
+        if (colSum > 0) { const f = C[m][i] / colSum; vendKeys.forEach(v => { Mtx[v][m] *= f; }); }
+      });
+    }
+    vendKeys.forEach(v => { marcaKeys.forEach(m => { grid[v][m][i] = Mtx[v][m]; }); });
+  }
+  return grid;
+}
+
+function buildVCMSplit(grid) {
+  // Reparte cada celda grid[vendedor][marca] entre los clientes reales que
+  // le compran esa marca a ese vendedor (RAW_DATA.vcmRaw). Si una celda no
+  // tiene detalle granular, cae al reparto histórico general de clientes
+  // del vendedor para no perder el monto.
+  const byVM = {};
+  (RAW_DATA.vcmRaw || []).forEach(r => {
+    const w = (r.h25 || 0) + (r.h24 || 0);
+    if (w <= 0 || !r.vendedor || !r.marca) return;
+    if (!byVM[r.vendedor]) byVM[r.vendedor] = {};
+    if (!byVM[r.vendedor][r.marca]) byVM[r.vendedor][r.marca] = [];
+    byVM[r.vendedor][r.marca].push({ alias: r.alias, w });
+  });
+
+  const result = {};
+  Object.entries(grid).forEach(([vend, marcas]) => {
+    result[vend] = {};
+    const vendClients = RAW_DATA.vendedorClientes?.[vend] || {};
+    const vendClientTotal = Object.values(vendClients).reduce((s,d) => s + (d.histQ2_2025 || 0), 0);
+
+    Object.entries(marcas).forEach(([marca, val]) => {
+      const cellTotal = val.reduce((a,b) => a + b, 0);
+      if (cellTotal <= 0) return;
+      const clients = (byVM[vend] && byVM[vend][marca]) || [];
+      const wTotal  = clients.reduce((s,c) => s + c.w, 0);
+      result[vend][marca] = {};
+      if (wTotal > 0) {
+        clients.forEach(c => {
+          const share = c.w / wTotal;
+          result[vend][marca][c.alias] = val.map(v => v * share);
+        });
+      } else if (vendClientTotal > 0) {
+        Object.entries(vendClients).forEach(([alias, cd]) => {
+          const share = (cd.histQ2_2025 || 0) / vendClientTotal;
+          if (share <= 0) return;
+          result[vend][marca][alias] = val.map(v => v * share);
+        });
+      } else {
+        result[vend][marca]['(Sin detalle)'] = val.slice();
+      }
+    });
+  });
+  return result;
+}
+
+function aggregateClientTotals(split) {
+  const totals = {};
+  Object.values(split).forEach(marcas => {
+    Object.values(marcas).forEach(clients => {
+      Object.entries(clients).forEach(([alias, val]) => {
+        if (!totals[alias]) totals[alias] = [0, 0, 0];
+        val.forEach((v, i) => { totals[alias][i] += v; });
+      });
+    });
+  });
+  return totals;
+}
+
+function aggregateVendClientTotals(split, vend) {
+  const totals = {};
+  Object.values(split[vend] || {}).forEach(clients => {
+    Object.entries(clients).forEach(([alias, val]) => {
+      if (!totals[alias]) totals[alias] = [0, 0, 0];
+      val.forEach((v, i) => { totals[alias][i] += v; });
+    });
+  });
+  return totals;
+}
+
+function clientProjFromSplit(split) {
+  const totals = aggregateClientTotals(split);
+  const result = {};
   Object.entries(RAW_DATA.clientes).forEach(([cl, d]) => {
-    raw[cl] = {
-      proj: getProyeccion(d).slice(),
+    result[cl] = {
+      proj: totals[cl] || [0, 0, 0],
       histQ2_2025: getHistQ2(d.historico, 2025),
       histQ2_2024: getHistQ2(d.historico, 2024)
     };
   });
-
-  // Step 2: compute grand totals — unadjusted vs adjusted vendedores
-  // Unadjusted: base vendor projections using current model settings (no manual adj factor)
-  const unadjTotals = [0, 1, 2].map(i =>
-    Object.values(RAW_DATA.vendedores).reduce((s, d) => s + (getProyeccion(d)[i] || 0), 0)
-  );
-  // Adjusted: vendor projections with current adjustment factors
-  const vendProj = computeVendProjections();
-  const adjTotals = [0, 1, 2].map(i =>
-    Object.values(vendProj).reduce((s, v) => s + v.proj[i], 0)
-  );
-
-  // Step 3: scale each client by the per-month ratio (adjusted / unadjusted)
-  const result = {};
-  Object.entries(raw).forEach(([cl, d]) => {
-    result[cl] = {
-      proj: d.proj.map((v, i) => unadjTotals[i] > 0 ? v * adjTotals[i] / unadjTotals[i] : v),
-      histQ2_2025: d.histQ2_2025,
-      histQ2_2024: d.histQ2_2024
-    };
-  });
   return result;
+}
+
+function computeClientProjections() {
+  // Cada cliente recibe exactamente su parte real del modelo: la del grid
+  // vendedor×marca (ya reconciliado) repartida según sus compras históricas
+  // de cada marca específica — no un escalado uniforme por una sola razón
+  // compañía-completa como antes. Así, si subís una marca, solo suben los
+  // clientes que de verdad la compran.
+  const vendProj  = computeVendProjections();
+  const marcaProj = computeMarcaProjections();
+  const grid  = buildVendMarcaGrid(vendProj, marcaProj);
+  const split = buildVCMSplit(grid);
+  return clientProjFromSplit(split);
 }
 
 function getTotalProjection(vendProj) {
@@ -1677,7 +1814,12 @@ function render() {
   const vendProj = computeVendProjections();
   const marcaProj = computeMarcaProjections();
   const portProj = computePortProjections();
-  const clientProj = computeClientProjections();
+  // Grid vendedor×marca reconciliado (IPF) + reparto real a clientes — UNA
+  // sola vez por render, reutilizado por Vend-Marca, Vend-Cliente y Clientes
+  // para que los tres siempre coincidan entre sí y con los totales arriba.
+  const vcmGrid  = buildVendMarcaGrid(vendProj, marcaProj);
+  const vcmSplit = buildVCMSplit(vcmGrid);
+  const clientProj = clientProjFromSplit(vcmSplit);
 
   // Update monthly budget breakdown (uses projection distribution, so must re-render)
   if (!state.budgetWeights) renderBudgetBreakdown();
@@ -1751,8 +1893,8 @@ function render() {
   renderVendTable(vendProj);
   renderMarcaTable(marcaProj);
   renderVendPortTable(vendProj, portProj);
-  renderVendMarcaTable(vendProj);
-  renderVendClienteTable(vendProj, clientProj);
+  renderVendMarcaTable(vendProj, vcmGrid);
+  renderVendClienteTable(vendProj, vcmSplit);
   renderVCMTable(vendProj);
   renderClientTable(clientProj);
   renderAdjPanels();
@@ -2387,7 +2529,7 @@ async function toggleVCMCliente(rowId, vendedor, alias) {
 }
 
 
-function renderVendMarcaTable(vendProj) {
+function renderVendMarcaTable(vendProj, grid) {
   const sorted = Object.entries(vendProj)
     .map(([v, d]) => ({ v, ...d, total: d.proj.reduce((a,b)=>a+b,0) }))
     .sort((a,b) => a.v.replace(/^\d+-/,'').trim().localeCompare(b.v.replace(/^\d+-/,'').trim(), 'es'));
@@ -2396,10 +2538,6 @@ function renderVendMarcaTable(vendProj) {
   const grandH25   = sorted.reduce((s,x)=>s+x.histQ2_2025,0);
   const grandH24   = sorted.reduce((s,x)=>s+x.histQ2_2024,0);
   const grandVar   = grandH25 > 0 ? ((grandTotal-grandH25)/grandH25*100) : 0;
-
-  const marcaProj = computeMarcaProjections();
-  // vendedorPortafolio: map from Supabase (empty = show all brands)
-  const vendPort  = RAW_DATA.vendedorPortafolio || {};
 
   let html = '';
   sorted.forEach((x, idx) => {
@@ -2419,46 +2557,36 @@ function renderVendMarcaTable(vendProj) {
       <td class="num">${partPct.toFixed(1)}%</td>
     </tr>`;
 
-    // Filter brands by vendedor's portafolio (if mapping exists)
-    const vendedorPort = vendPort[x.v] || vendPort[x.v.trim()] || null;
-    const normalize = s => (s || '').trim().toLowerCase();
-    const marcasDelVendedor = Object.entries(marcaProj).filter(([marca]) => {
-      if (!vendedorPort) return true; // no mapping → show all brands
-      const marcaPort = RAW_DATA.marcas[marca]?.portafolio || '';
-      return normalize(marcaPort) === normalize(vendedorPort);
+    // Marcas de este vendedor: celdas REALES del grid reconciliado (vendedor
+    // × marca). Una marca solo aparece si este vendedor tiene participación
+    // histórica real en ella — ya no hay aproximación por portafolio.
+    const vendMarcas = Object.entries(grid[x.v] || {})
+      .map(([marca, val]) => ({ marca, val, tot: val.reduce((a,b)=>a+b,0) }))
+      .filter(r => r.tot >= 1000)
+      .sort((a,b) => b.tot - a.tot);
+
+    vendMarcas.forEach(({ marca, val, tot }) => {
+      const vmh   = RAW_DATA.vendMarcaHist?.[marca]?.[x.v];
+      const mH25  = vmh?.h25 || 0;
+      const mH24  = vmh?.h24 || 0;
+      const mVar  = mH25 > 0 ? ((tot - mH25)/mH25*100) : 0;
+      const mPart = grandTotal > 0 ? (tot/grandTotal*100) : 0;
+      const portBadge = RAW_DATA.marcas[marca]?.portafolio
+        ? `<span style="font-size:9px;background:var(--bg3);color:var(--text2);padding:1px 5px;border-radius:4px;margin-left:5px">${RAW_DATA.marcas[marca].portafolio}</span>`
+        : '';
+      html += `<tr class="vp-port-row p1 hidden" data-parent-vm="${idx}">
+        <td style="padding-left:28px">🏷️ ${marca}${portBadge}</td>
+        <td class="num">${fmt(mH25)}</td><td class="num">${fmt(mH24)}</td>
+        <td class="num">${fmt(val[0])}</td><td class="num">${fmt(val[1])}</td><td class="num">${fmt(val[2])}</td>
+        <td class="num" style="font-weight:600">${fmt(tot)}</td>
+        <td class="num ${mVar>=0?'pos':'neg'}">${fmtPct(mVar)}</td>
+        <td class="num">${mPart.toFixed(1)}%</td>
+      </tr>`;
     });
 
-    // Sum of all brands in this vendor's portafolio for proportional share
-    const portTotal = marcasDelVendedor.reduce((s, [,md]) => s + md.proj.reduce((a,b)=>a+b,0), 0) || 1;
-
-    marcasDelVendedor
-      .sort((a, b) => b[1].proj.reduce((s,v)=>s+v,0) - a[1].proj.reduce((s,v)=>s+v,0))
-      .forEach(([marca, md]) => {
-        const mTotal = md.proj.reduce((a,b)=>a+b,0);
-        const share  = portTotal > 0 ? mTotal / portTotal : 0;
-        const mAbr   = x.proj[0]*share, mMay=x.proj[1]*share, mJun=x.proj[2]*share;
-        const mTot   = mAbr+mMay+mJun;
-        const mH25   = x.histQ2_2025*share;
-        const mH24   = x.histQ2_2024*share;
-        const mVar   = mH25>0?((mTot-mH25)/mH25*100):0;
-        const mPart  = grandTotal>0?(mTot/grandTotal*100):0;
-        const portBadge = RAW_DATA.marcas[marca]?.portafolio
-          ? `<span style="font-size:9px;background:var(--bg3);color:var(--text2);padding:1px 5px;border-radius:4px;margin-left:5px">${RAW_DATA.marcas[marca].portafolio}</span>`
-          : '';
-        if (mTot < 1000) return;
-        html += `<tr class="vp-port-row p1 hidden" data-parent-vm="${idx}">
-          <td style="padding-left:28px">🏷️ ${marca}${portBadge}</td>
-          <td class="num">${fmt(mH25)}</td><td class="num">${fmt(mH24)}</td>
-          <td class="num">${fmt(mAbr)}</td><td class="num">${fmt(mMay)}</td><td class="num">${fmt(mJun)}</td>
-          <td class="num" style="font-weight:600">${fmt(mTot)}</td>
-          <td class="num ${mVar>=0?'pos':'neg'}">${fmtPct(mVar)}</td>
-          <td class="num">${mPart.toFixed(1)}%</td>
-        </tr>`;
-      });
-
-    if (marcasDelVendedor.length === 0) {
+    if (vendMarcas.length === 0) {
       html += `<tr class="vp-port-row p1 hidden" data-parent-vm="${idx}">
-        <td colspan="9" style="padding-left:28px;color:var(--text3);font-style:italic">Sin marcas asignadas para ${vendedorPort || 'este portafolio'}</td>
+        <td colspan="9" style="padding-left:28px;color:var(--text3);font-style:italic">Sin marcas con historial para este vendedor</td>
       </tr>`;
     }
   });
@@ -2477,7 +2605,7 @@ function renderVendMarcaTable(vendProj) {
   </tr>`;
 }
 
-function renderVendClienteTable(vendProj, clientProj) {
+function renderVendClienteTable(vendProj, split) {
   const sorted = Object.entries(vendProj)
     .map(([v, d]) => ({ v, ...d, total: d.proj.reduce((a,b)=>a+b,0) }))
     .sort((a,b) => a.v.replace(/^\d+-/,'').trim().localeCompare(b.v.replace(/^\d+-/,'').trim(), 'es'));
@@ -2508,7 +2636,6 @@ function renderVendClienteTable(vendProj, clientProj) {
     </tr>`;
 
     if (!hasMapping) {
-      // No file loaded — show placeholder row
       html += `<tr class="vp-port-row p2 hidden" data-parent-vc="${idx}">
         <td colspan="9" style="padding-left:28px;color:var(--text3);font-style:italic">
           Cargá un archivo Excel para ver los clientes por vendedor
@@ -2517,10 +2644,21 @@ function renderVendClienteTable(vendProj, clientProj) {
       return;
     }
 
-    // Get clients for this vendor — try exact key first, then partial match
+    // Total real por cliente DENTRO de este vendedor, sumado a través de
+    // todas las marcas (ya viene del mismo grid reconciliado vendedor×marca
+    // → marca-aware: si una marca subió, solo suben aquí los clientes que
+    // de verdad la compran).
+    let clientTotals = aggregateVendClientTotals(split, x.v);
+    if (Object.keys(clientTotals).length === 0) {
+      const vKey = Object.keys(split).find(k =>
+        k.replace(/\s/g,'').toLowerCase() === x.v.replace(/\s/g,'').toLowerCase() ||
+        k.split('-')[0] === x.v.split('-')[0]
+      );
+      if (vKey) clientTotals = aggregateVendClientTotals(split, vKey);
+    }
+
     let vendClients = RAW_DATA.vendedorClientes[x.v];
     if (!vendClients) {
-      // Try matching by vendor number prefix (e.g. "141-CHRISTIAN..." matches "141-CHRISTIAN...")
       const vKey = Object.keys(RAW_DATA.vendedorClientes).find(k =>
         k.replace(/\s/g,'').toLowerCase() === x.v.replace(/\s/g,'').toLowerCase() ||
         k.split('-')[0] === x.v.split('-')[0]
@@ -2528,11 +2666,9 @@ function renderVendClienteTable(vendProj, clientProj) {
       vendClients = vKey ? RAW_DATA.vendedorClientes[vKey] : {};
     }
     vendClients = vendClients || {};
-    const vendClientTotal = Object.values(vendClients).reduce((s,d)=>s+(d.histQ2_2025||0),0) || 1;
 
-    // Sort clients by historical Q2 2025 desc, show ALL clients
-    const clientsSorted = Object.entries(vendClients)
-      .sort((a,b) => (b[1].histQ2_2025||0) - (a[1].histQ2_2025||0));
+    const clientsSorted = Object.entries(clientTotals)
+      .sort((a,b) => b[1].reduce((s,v)=>s+v,0) - a[1].reduce((s,v)=>s+v,0));
 
     if (clientsSorted.length === 0) {
       html += `<tr class="vp-port-row p2 hidden" data-parent-vc="${idx}">
@@ -2540,12 +2676,9 @@ function renderVendClienteTable(vendProj, clientProj) {
       </tr>`;
     }
 
-    clientsSorted.forEach(([cl, cd]) => {
-      const share = (cd.histQ2_2025||0) / vendClientTotal;
-      const cAbr  = x.proj[0] * share;
-      const cMay  = x.proj[1] * share;
-      const cJun  = x.proj[2] * share;
-      const cTot  = cAbr + cMay + cJun;
+    clientsSorted.forEach(([cl, val]) => {
+      const cd    = vendClients[cl] || {};
+      const cTot  = val.reduce((a,b)=>a+b,0);
       const cH25  = cd.histQ2_2025 || 0;
       const cH24  = cd.histQ2_2024 || 0;
       const cVar  = cH25>0?((cTot-cH25)/cH25*100):0;
@@ -2553,7 +2686,7 @@ function renderVendClienteTable(vendProj, clientProj) {
       html += `<tr class="vp-port-row p2 hidden" data-parent-vc="${idx}">
         <td style="padding-left:28px">🏪 ${cl}</td>
         <td class="num">${fmt(cH25)}</td><td class="num">${fmt(cH24)}</td>
-        <td class="num">${fmt(cAbr)}</td><td class="num">${fmt(cMay)}</td><td class="num">${fmt(cJun)}</td>
+        <td class="num">${fmt(val[0])}</td><td class="num">${fmt(val[1])}</td><td class="num">${fmt(val[2])}</td>
         <td class="num" style="font-weight:600">${fmt(cTot)}</td>
         <td class="num ${cVar>=0?'pos':'neg'}">${fmtPct(cVar)}</td>
         <td class="num">${cPart.toFixed(1)}%</td>
@@ -3448,7 +3581,7 @@ function buildEmailHTML(vendedor, totals, clientes) {
     }).join('')}
   </tr>
 </table>
-</td></tr><tr><td style="padding:0 32px 32px"><div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">Desglose por Cliente y Marca</div><table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #e5e7eb"><thead><tr style="background:#009ee3"><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:left">Cliente / Marca</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:right">Meta Jul</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:right">Meta Ago</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:right">Meta Sep</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:right">Total Q3</th></tr></thead><tbody>${rows}</tbody></table></td></tr><tr><td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb"><div style="font-size:12px;color:#374151;line-height:1.9">Quedo atento ante cualquier consulta y apoyo.<br>Saludos cordiales,<br><strong>Jorge Garc�a</strong></div></td></tr></table></body></html>`;
+</td></tr><tr><td style="padding:0 32px 32px"><div style="font-size:13px;font-weight:700;color:#374151;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.5px">Desglose por Cliente y Marca</div><table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #e5e7eb"><thead><tr style="background:#009ee3"><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:left">Cliente / Marca</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:right">Meta Jul</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:right">Meta Ago</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:right">Meta Sep</th><th style="padding:10px 12px;font-size:11px;font-weight:600;color:#fff;text-align:right">Total Q3</th></tr></thead><tbody>${rows}</tbody></table></td></tr><tr><td style="padding:20px 32px;background:#f9fafb;border-top:1px solid #e5e7eb"><div style="font-size:12px;color:#374151;line-height:1.9">Quedo atento ante cualquier consulta y apoyo.<br>Saludos cordiales,<br><strong>Jorge Garc�a</strong></div></td></tr></table></body></html>`;
 }
 
 async function buildVCMPayload(vcmData, vendedor, vendProjData) {
@@ -3803,10 +3936,12 @@ async function _doExportExcel(exportBtn) {
     }
   }
 
-  // Escalar cada fila al modelo: la proyección Q3 2026 real del vendedor (vendProj)
-  // se distribuye proporcionalmente según el peso histórico (hist_q3_2025) de cada
-  // combinación cliente×marca dentro de ese vendedor — así el total por vendedor
-  // siempre coincide exactamente con "Meta por Zona de Venta".
+  // Usar el MISMO grid reconciliado (vendedor×marca, IPF) y reparto a
+  // clientes que usan las vistas en vivo — así el Excel siempre coincide
+  // exacto con "Meta por Marca", "Meta por Zona de Venta", Vend-Marca y
+  // Vend-Cliente, marca por marca y cliente por cliente.
+  const vcmGrid  = buildVendMarcaGrid(vendProj, marcaProj);
+  const vcmSplit = buildVCMSplit(vcmGrid);
   const normVend = s => (s||'').replace(/^\d+-/,'').trim().toLowerCase();
   const vendModelTotal = {};
   Object.entries(vendProj).forEach(([v,d]) => { vendModelTotal[v] = d.proj.reduce((a,b)=>a+b,0); });
@@ -3814,6 +3949,13 @@ async function _doExportExcel(exportBtn) {
   vcmData.forEach(r => { vendHistSum[r.vendedor] = (vendHistSum[r.vendedor]||0) + (Number(r.hist_q3_2025)||0); });
 
   vcmData.forEach(r => {
+    const cell = vcmSplit[r.vendedor]?.[r.marca]?.[r.alias];
+    if (cell) {
+      r.proyectado_q3_2026 = cell.reduce((a,b)=>a+b,0);
+      return;
+    }
+    // Fallback: fila sin match exacto en el grid (p.ej. discrepancia de
+    // nombre) → reparto uniforme dentro del vendedor, como antes
     let modelTotal = vendModelTotal[r.vendedor];
     if (modelTotal === undefined) {
       const key = Object.keys(vendModelTotal).find(k => normVend(k) === normVend(r.vendedor));
@@ -4192,13 +4334,40 @@ async function loadFromSupabase() {
   document.getElementById('dataStatus').className = 'status-chip chip-warn';
 
   try {
-    // Fetch all 4 RPCs in parallel
-    const [vendRows, marcaRows, clienteRows, portReglas] = await Promise.all([
+    // Fetch all 6 RPCs in parallel
+    const [vendRows, marcaRows, clienteRows, portReglas, vendMarcaRows, vcmRows] = await Promise.all([
       supaRPC('get_vendedores_hist'),
       supaRPC('get_marcas_hist'),
       supaRPC('get_clientes_hist'),
-      supaRPC('get_vendor_portafolio')
+      supaRPC('get_vendor_portafolio'),
+      supaRPC('get_vend_marca_hist'),
+      supaRPC('get_vcm_export')
     ]);
+
+    // ── Build RAW_DATA.vendMarcaHist: { marca: { vendedor: {w, h25, h24} } } ──
+    // Real vendor×brand participation (same vendedor_secundario join as
+    // get_vendedores_hist). w = peso histórico de 24 meses (para IPF/seed),
+    // h25/h24 = Jul-Sep histórico (para mostrar variación en la tabla).
+    const newVendMarcaHist = {};
+    vendMarcaRows.forEach(r => {
+      if (!r.vendedor || !r.marca) return;
+      const m = Array.from({length:24}, (_,i) => Number(r[`m${i}`]) || 0);
+      const w   = m.reduce((a,b) => a + b, 0);          // peso 24 meses (IPF seed)
+      const h25 = m[12] + m[13] + m[14];                 // jul/ago/sep 2025
+      const h24 = m[0]  + m[1]  + m[2];                   // jul/ago/sep 2024
+      if (!newVendMarcaHist[r.marca]) newVendMarcaHist[r.marca] = {};
+      const prev = newVendMarcaHist[r.marca][r.vendedor] || { w:0, h25:0, h24:0 };
+      newVendMarcaHist[r.marca][r.vendedor] = { w: prev.w+w, h25: prev.h25+h25, h24: prev.h24+h24 };
+    });
+    RAW_DATA.vendMarcaHist = newVendMarcaHist;
+
+    // ── RAW_DATA.vcmRaw: granular Vendedor × Cliente × Marca rows ──
+    // (mismo RPC que ya usaba el export de Excel, ahora cargado al inicio
+    // para que las vistas en vivo también puedan repartir por cliente real)
+    RAW_DATA.vcmRaw = (vcmRows || []).map(r => ({
+      vendedor: r.vendedor, alias: r.alias, marca: r.marca,
+      h25: Number(r.hist_q3_2025) || 0, h24: Number(r.hist_q3_2024) || 0
+    }));
 
     // Build vendedor → portafolio mapping from RPC result
     const vendedorPortafolio = {};
@@ -5512,7 +5681,7 @@ function editMarcaCell(td, marca, monthIdx) {
     }
     state.marcaOverrides[marca] = newProj;
 
-    // Sync to adjustments.marcas as % so getMarcaAdjFactor propagates to vendors
+    // Sync to adjustments.marcas as % so getMarcaVendorExtra propagates to the vendors that sell this brand
     const newTotal = newProj.reduce((a,b)=>a+b,0);
     if (baseTotal > 0) {
       state.adjustments.marcas[marca] = (newTotal / baseTotal - 1) * 100;
