@@ -696,7 +696,6 @@ Phelps Dodge&#9;8400000&#9;9100000&#9;8700000
   <div class="tab active" onclick="switchTab(0)">📊 Resumen</div>
   <div class="tab" onclick="switchTab(5)">🏪 Clientes</div>
   <div class="tab" onclick="switchTab(2)">🏷️ Marcas</div>
-  <div class="tab" onclick="switchTab(3)">📁 Portafolio</div>
   <div class="tab" onclick="switchTab(1)">👤 Zonas de Venta</div>
   <div class="tab" onclick="switchTab(4)">📋 Zona de Vta. - Vendedores</div>
   <div class="tab" onclick="switchTab(9)">🏪👤 Vend-Cliente</div>
@@ -837,15 +836,7 @@ Phelps Dodge&#9;8400000&#9;9100000&#9;8700000
   </div>
 </div>
 
-<!-- TAB 3: PORTAFOLIO -->
-<div class="panel-section" id="tab3">
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px">
-    <div id="portCard_p1" class="card" style="border-color:rgba(220,38,38,0.35);margin-bottom:0"></div>
-    <div id="portCard_p2" class="card" style="border-color:rgba(6,182,212,0.35);margin-bottom:0"></div>
-    <div id="portCard_p3" class="card" style="border-color:rgba(30,58,138,0.35);margin-bottom:0"></div>
-  </div>
-</div>
-
+<div class="panel-section" id="tab3"></div>
 <!-- TAB 4: VENDEDOR - PORTAFOLIO -->
 <div class="panel-section" id="tab4">
   <div class="card">
@@ -1876,7 +1867,6 @@ function render() {
 
   renderKPIs(q2Hist, totalProj, budget, monthlyProj, monthlyHist25);
   renderAlerts(totalProj, budget);
-  renderPortCards(portProj);
   renderVendTable(vendProj);
   renderMarcaTable(marcaProj);
   renderVendPortTable(vendProj, portProj);
