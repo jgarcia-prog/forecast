@@ -3404,13 +3404,9 @@ function buildSupervisorEmailHTML(supervisor, vendedoresData) {
   <tr><td style="padding:0 32px 24px">
     <table width="100%" cellpadding="0" cellspacing="0" style="border-radius:10px;overflow:hidden;border:1px solid #e5e7eb">
       <tr style="background:#f0fdf4">
-        <td colspan="2" style="padding:16px 20px;border-right:1px solid #d1fae5">
+        <td colspan="3" style="padding:16px 20px">
           <div style="font-size:11px;font-weight:700;color:#059669;letter-spacing:0.8px;text-transform:uppercase">Meta Total Equipo Q3 2026</div>
           <div style="font-size:26px;font-weight:800;color:#064e3b;margin-top:4px">${fm(teamTotal)}</div>
-        </td>
-        <td style="padding:16px 20px;text-align:right;background:#f0fdf4">
-          <div style="font-size:11px;font-weight:700;color:#6b7280;letter-spacing:0.8px;text-transform:uppercase">Q3 2025 Real</div>
-          <div style="font-size:20px;font-weight:700;color:#374151;margin-top:4px">${fm(teamHist)}</div>
         </td>
       </tr>
       <tr style="background:#f0fdf4;border-top:1px solid #d1fae5">
@@ -3560,13 +3556,9 @@ function buildEmailHTML(vendedor, totals, clientes) {
   return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif"><table width="100%" cellpadding="0" cellspacing="0" style="max-width:700px;margin:24px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08)"><tr><td style="padding:28px 32px 16px"><div style="font-size:16px;color:#111827;font-weight:600">Estimado/a ${nm},</div><div style="font-size:14px;color:#6b7280;margin-top:8px;line-height:1.6">A continuaci\u00f3n encontr\u00e1s las metas de ventas proyectadas para el tercer trimestre 2026, desglosadas por mes, cliente y marca.</div></td></tr><tr><td style="padding:0 32px 24px">
 <table width="100%" cellpadding="0" cellspacing="0" style="border-radius:10px;overflow:hidden;border:1px solid #e5e7eb">
   <tr style="background:#f0fdf4">
-    <td colspan="2" style="padding:16px 20px 10px;border-right:1px solid #d1fae5">
+    <td colspan="3" style="padding:16px 20px 10px">
       <div style="font-size:11px;font-weight:700;color:#059669;letter-spacing:0.8px;text-transform:uppercase">Meta Total Q3 2026</div>
       <div style="font-size:26px;font-weight:800;color:#064e3b;margin-top:4px">${fm(totals.meta_q3)}</div>
-    </td>
-    <td style="padding:16px 20px 10px;text-align:right;background:#f0fdf4">
-      <div style="font-size:11px;font-weight:700;color:#6b7280;letter-spacing:0.8px;text-transform:uppercase">Q3 2025 Real</div>
-      <div style="font-size:20px;font-weight:700;color:#374151;margin-top:4px">${fm(totals.hist_q3_2025)}</div>
     </td>
   </tr>
   <tr style="background:#f0fdf4;border-top:1px solid #d1fae5">
