@@ -701,6 +701,7 @@ Phelps Dodge&#9;8400000&#9;9100000&#9;8700000
   <div class="tab" onclick="switchTab(9)">🏪👤 Vend-Cliente</div>
   <div class="tab" onclick="switchTab(8)">🏷️👤 Vend-Marca</div>
   <div class="tab" onclick="switchTab(10)">🏪👤🏷️ Vend-Cliente-Marca</div>
+  <div class="tab" onclick="switchTab(11)">📈 Tendencia</div>
   <div class="tab" onclick="switchTab(7)">📐 Metodología</div>
   <div class="tab" onclick="switchTab(6)">⚙️ Ajustes</div>
 </div>
@@ -1235,6 +1236,56 @@ Phelps Dodge&#9;8400000&#9;9100000&#9;8700000
     </div>
   </div>
 </div>
+
+<!-- TAB 11: TENDENCIA -->
+<div class="panel-section" id="tab11">
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">📈 Tendencia — Últimos 9 meses + Proyección Q3 2026</div>
+        <div class="card-sub" id="tendenciaScopeLabel">Mostrando: Total Compañía</div>
+      </div>
+      <button class="btn btn-outline" onclick="openTendenciaModal()" style="font-size:12px;padding:6px 14px">🔍 Marca / Vendedor</button>
+    </div>
+    <div class="chart-wrap" style="height:340px">
+      <canvas id="tendenciaChart"></canvas>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><div class="card-title">Detalle mensual</div></div>
+    <div class="table-wrap">
+      <table class="data-table" id="tendenciaTable">
+        <thead><tr id="tendenciaTableHead"></tr></thead>
+        <tbody id="tendenciaTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- TENDENCIA: Modal de selección Marca/Vendedor -->
+<div id="tendenciaModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border-radius:16px;width:440px;max-width:92vw;box-shadow:0 24px 60px rgba(0,0,0,0.4)">
+    <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:16px;font-weight:700;color:var(--text)">📈 Ver tendencia de...</div>
+      <button onclick="closeTendenciaModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text2)">✕</button>
+    </div>
+    <div style="padding:20px 24px;display:flex;flex-direction:column;gap:14px">
+      <div>
+        <label style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:6px">Vendedor</label>
+        <select id="tendenciaVendSel" class="filter-select" style="width:100%"><option value="">Todos (Total Compañía)</option></select>
+      </div>
+      <div>
+        <label style="font-size:11px;font-weight:600;letter-spacing:0.6px;text-transform:uppercase;color:var(--text2);display:block;margin-bottom:6px">Marca</label>
+        <select id="tendenciaMarcaSel" class="filter-select" style="width:100%"><option value="">Todas</option></select>
+      </div>
+      <div style="font-size:11px;color:var(--text3)">Elegí solo Vendedor, solo Marca, ambos a la vez, o dejá las dos en "Todos" para ver el total de la compañía.</div>
+    </div>
+    <div style="padding:14px 24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px">
+      <button class="btn btn-outline" onclick="closeTendenciaModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="applyTendenciaFilter()">Aplicar</button>
+    </div>
+  </div>
+</div>
 <!-- ==================== EMAIL MODAL ==================== -->
 <div id="emailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center">
   <div style="background:var(--bg2);border-radius:16px;width:860px;max-width:95vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,0.4)">
@@ -1360,6 +1411,8 @@ let state = {
   filterPortfolio: 'all',
   filterVendedor: '',
   filterMarca: '',
+  tendenciaVend: '',
+  tendenciaMarca: '',
   charts: {}
 };
 
@@ -1407,6 +1460,22 @@ function populateFilters() {
   Object.keys(RAW_DATA.marcas).sort().forEach(m => {
     const o = document.createElement('option'); o.value = m; o.text = m; selM.add(o);
   });
+
+  // Tendencia modal selects
+  const tSelV = document.getElementById('tendenciaVendSel');
+  const tSelM = document.getElementById('tendenciaMarcaSel');
+  if (tSelV) {
+    tSelV.length = 1; // keep "Todos" option
+    Object.keys(RAW_DATA.vendedores)
+      .sort((a,b) => a.replace(/^\d+-/,'').trim().localeCompare(b.replace(/^\d+-/,'').trim(), 'es'))
+      .forEach(v => { const o = document.createElement('option'); o.value = v; o.text = v.replace(/^\d+-/, '').trim(); tSelV.add(o); });
+  }
+  if (tSelM) {
+    tSelM.length = 1; // keep "Todas" option
+    Object.keys(RAW_DATA.marcas).sort((a,b) => a.localeCompare(b,'es')).forEach(m => {
+      const o = document.createElement('option'); o.value = m; o.text = m; tSelM.add(o);
+    });
+  }
 }
 
 // ==================== CALCULATIONS ====================
@@ -1875,6 +1944,7 @@ function render() {
   renderVCMTable(vendProj);
   renderClientTable(clientProj);
   renderAdjPanels();
+  renderTendenciaTab(vendProj, marcaProj, vcmGrid);
 }
 
 function fmt(v) {
@@ -2885,6 +2955,116 @@ function renderClientTable(clientProj) {
       <td class="num" style="color:var(--text2)">base</td>
     </tr>`;
   }).join('');
+}
+
+// ==================== TENDENCIA (TAB 11) ====================
+function openTendenciaModal() {
+  document.getElementById('tendenciaVendSel').value = state.tendenciaVend;
+  document.getElementById('tendenciaMarcaSel').value = state.tendenciaMarca;
+  document.getElementById('tendenciaModal').style.display = 'flex';
+}
+function closeTendenciaModal() {
+  document.getElementById('tendenciaModal').style.display = 'none';
+}
+function applyTendenciaFilter() {
+  state.tendenciaVend  = document.getElementById('tendenciaVendSel').value;
+  state.tendenciaMarca = document.getElementById('tendenciaMarcaSel').value;
+  closeTendenciaModal();
+  render();
+}
+
+function getTendenciaSeries(vendProj, marcaProj, grid) {
+  // Devuelve { hist9: [9 valores], proj3: [3 valores], label }
+  const vend  = state.tendenciaVend;
+  const marca = state.tendenciaMarca;
+
+  if (vend && marca) {
+    // Combinado: usa la celda real del grid reconciliado (vendedor×marca)
+    // para la proyección, y la serie histórica real vendedor-marca si existe.
+    const vmh = RAW_DATA.vendMarcaHist?.[marca]?.[vend];
+    let hist9;
+    if (vmh && vmh.hist) {
+      hist9 = vmh.hist.slice(-9);
+    } else {
+      // Fallback: reparte el histórico de la marca según el peso del vendedor
+      const marcaHist = RAW_DATA.marcas[marca]?.historico || [];
+      const weights = RAW_DATA.vendMarcaHist?.[marca] || {};
+      const totalW = Object.values(weights).reduce((s,w)=>s+(w.w||0),0);
+      const myW = weights[vend]?.w || 0;
+      const share = totalW > 0 ? myW/totalW : 0;
+      hist9 = marcaHist.slice(-9).map(v => v*share);
+    }
+    const proj3 = (grid[vend] && grid[vend][marca]) ? grid[vend][marca] : [0,0,0];
+    const vLabel = vend.replace(/^\d+-/,'').trim();
+    return { hist9, proj3, label: `${vLabel} · ${marca}` };
+  }
+  if (vend) {
+    const d = RAW_DATA.vendedores[vend];
+    const hist9 = (d?.historico || []).slice(-9);
+    const proj3 = vendProj[vend] ? vendProj[vend].proj : [0,0,0];
+    return { hist9, proj3, label: vend.replace(/^\d+-/,'').trim() };
+  }
+  if (marca) {
+    const d = RAW_DATA.marcas[marca];
+    const hist9 = (d?.historico || []).slice(-9);
+    const proj3 = marcaProj[marca] ? marcaProj[marca].proj : [0,0,0];
+    return { hist9, proj3, label: marca };
+  }
+  // Total compañía
+  const hist9 = (RAW_DATA.monthly_total || []).slice(-9);
+  const proj3 = [0,1,2].map(i => Object.values(vendProj).reduce((s,v)=>s+v.proj[i],0));
+  return { hist9, proj3, label: 'Total Compañía' };
+}
+
+function renderTendenciaTab(vendProj, marcaProj, grid) {
+  const lbl = document.getElementById('tendenciaScopeLabel');
+  if (!lbl) return; // tab not in DOM yet
+
+  const { hist9, proj3, label } = getTendenciaSeries(vendProj, marcaProj, grid);
+  lbl.textContent = `Mostrando: ${label}`;
+
+  // Etiquetas de mes: últimos 9 meses reales (según RAW_DATA.months) + Jul/Ago/Sep 2026 proyectado
+  const allMonths = RAW_DATA.months || [];
+  const histLabels = allMonths.slice(-9).map(m => (m||'').replace(' de ', ' '));
+  const projLabels = ['Jul 2026','Ago 2026','Sep 2026'];
+  const labels = [...histLabels, ...projLabels];
+
+  const histData = [...hist9, ...Array(3).fill(null)];
+  const projData = [...Array(9).fill(null), hist9[hist9.length-1] ?? 0, ...proj3];
+  // El primer punto de la línea proyectada arranca en el último mes histórico
+  // para que se vea continua, no separada.
+
+  destroyChart('tendenciaChart');
+  const ctx = document.getElementById('tendenciaChart').getContext('2d');
+  state.charts['tendenciaChart'] = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Histórico', data: histData, borderColor: '#1a73e8', backgroundColor: 'rgba(26,115,232,0.08)', borderWidth: 2.5, fill: true, tension: 0.25, pointRadius: 3, spanGaps: false },
+        { label: 'Proyección Q3 2026', data: projData, borderColor: '#c47a00', backgroundColor: 'rgba(196,122,0,0.10)', borderWidth: 2.5, borderDash: [6,4], fill: true, tension: 0.25, pointRadius: 3, spanGaps: true }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: '#4a6080', font: { family: 'DM Sans', size: 12 } } },
+        tooltip: { ...chartTooltip(), callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmt(ctx.parsed.y)}` } }
+      },
+      scales: {
+        x: { ticks: { color: '#4a6080', font: { size: 10 }, maxRotation: 45 }, grid: { color: '#e8eef6' } },
+        y: { ticks: { color: '#4a6080', callback: v => fmtShort(v) }, grid: { color: '#e8eef6' } }
+      }
+    }
+  });
+
+  // Tabla detalle
+  const head = document.getElementById('tendenciaTableHead');
+  head.innerHTML = '<th>Periodo</th>' + labels.map(m => `<th class="num">${m}</th>`).join('');
+  const body = document.getElementById('tendenciaTableBody');
+  const histRow = hist9.map(v => `<td class="num">${fmt(v)}</td>`).join('') + '<td class="num" colspan="3" style="color:var(--text3);font-style:italic">—</td>';
+  const projRow = Array(9).fill('<td class="num" style="color:var(--text3)">—</td>').join('') + proj3.map(v => `<td class="num" style="color:var(--gold);font-weight:600">${fmt(v)}</td>`).join('');
+  body.innerHTML = `<tr><td><strong>Histórico</strong></td>${histRow}</tr><tr><td><strong>Meta Q3 2026</strong></td>${projRow}</tr>`;
 }
 
 function makeAdjItem(type, key, label) {
@@ -4310,9 +4490,13 @@ async function loadFromSupabase() {
       const w   = m.reduce((a,b) => a + b, 0);          // peso 24 meses (IPF seed)
       const h25 = m[12] + m[13] + m[14];                 // jul/ago/sep 2025
       const h24 = m[0]  + m[1]  + m[2];                   // jul/ago/sep 2024
+      const hist = [0,0,0,0,0,0, ...m];                  // 30-elem, mismo padding que RAW_DATA.vendedores/marcas
       if (!newVendMarcaHist[r.marca]) newVendMarcaHist[r.marca] = {};
-      const prev = newVendMarcaHist[r.marca][r.vendedor] || { w:0, h25:0, h24:0 };
-      newVendMarcaHist[r.marca][r.vendedor] = { w: prev.w+w, h25: prev.h25+h25, h24: prev.h24+h24 };
+      const prev = newVendMarcaHist[r.marca][r.vendedor] || { w:0, h25:0, h24:0, hist: Array(30).fill(0) };
+      newVendMarcaHist[r.marca][r.vendedor] = {
+        w: prev.w+w, h25: prev.h25+h25, h24: prev.h24+h24,
+        hist: prev.hist.map((v,i) => v + hist[i])
+      };
     });
     RAW_DATA.vendMarcaHist = newVendMarcaHist;
 
@@ -5790,6 +5974,8 @@ function doReset() {
   state.filterPortfolio = 'all';
   state.filterVendedor = '';
   state.filterMarca = '';
+  state.tendenciaVend = '';
+  state.tendenciaMarca = '';
 
   // 4. Reset budget to original
   state.budgetTarget = RAW_DATA.presupuesto_q2;
