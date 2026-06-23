@@ -712,14 +712,7 @@ Phelps Dodge&#9;8400000&#9;9100000&#9;8700000
 <div class="panel-section active" id="tab0">
   
   <div class="filters-bar">
-    <span class="filter-label">Portafolio:</span>
-    <div class="pill-group">
-      <div class="pill active" onclick="togglePortfolio(this,'all')">Todos</div>
-      <div class="pill" onclick="togglePortfolio(this,'Portafolio 1')">Portafolio 1</div>
-      <div class="pill" onclick="togglePortfolio(this,'Portafolio 2')">Portafolio 2</div>
-      <div class="pill" onclick="togglePortfolio(this,'Portafolio 3')">Portafolio 3</div>
-    </div>
-    <span class="filter-label" style="margin-left:12px">Vendedor:</span>
+    <span class="filter-label">Vendedor:</span>
     <select class="filter-select" id="filterVendedor" onchange="applyFilters()">
       <option value="">Todos</option>
     </select>
@@ -926,15 +919,9 @@ Phelps Dodge&#9;8400000&#9;9100000&#9;8700000
   <div class="alert-box alert-ok" style="margin-bottom:16px">
     ℹ️ Los ajustes son factores multiplicativos aplicados sobre la proyección estadística base. Use los botones <strong>+/−</strong> o el slider para ajustar. Los cambios se reflejan en tiempo real en todos los módulos (Vendedores, Marcas, Portafolio, Clientes).
   </div>
-  <div class="grid-2">
-    <div class="card">
-      <div class="card-header"><div class="card-title">⚙️ Ajuste por Vendedor</div></div>
-      <div class="adj-grid" id="adjVendedor"></div>
-    </div>
-    <div class="card">
-      <div class="card-header"><div class="card-title">⚙️ Ajuste por Portafolio</div></div>
-      <div class="adj-grid" id="adjPortfolio"></div>
-    </div>
+  <div class="card">
+    <div class="card-header"><div class="card-title">⚙️ Ajuste por Vendedor</div></div>
+    <div class="adj-grid" id="adjVendedor"></div>
   </div>
   <div class="card">
     <div class="card-header">
@@ -2939,11 +2926,6 @@ function renderAdjPanels() {
     .map(v => makeVendAdjItem(v, vendProj[v]))
     .join('');
 
-  // Portafolio adj
-  document.getElementById('adjPortfolio').innerHTML = Object.keys(RAW_DATA.portafolios).map(p =>
-    makeAdjItem('portafolios', p, p)
-  ).join('');
-
   // ALL marcas adj — alphabetical
   const allMarcas = Object.keys(RAW_DATA.marcas).sort((a,b) => a.localeCompare(b, 'es'));
   document.getElementById('adjMarca').innerHTML = allMarcas.map(m =>
@@ -3062,13 +3044,6 @@ function updateAdj(type, key, input) {
 }
 
 // ==================== FILTERS ====================
-function togglePortfolio(el, val) {
-  document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
-  el.classList.add('active');
-  state.filterPortfolio = val;
-  applyFilters();
-}
-
 function applyFilters() {
   state.filterVendedor = document.getElementById('filterVendedor').value;
   state.filterMarca = document.getElementById('filterMarca').value;
@@ -3081,7 +3056,6 @@ function resetFilters() {
   state.filterMarca = '';
   document.getElementById('filterVendedor').value = '';
   document.getElementById('filterMarca').value = '';
-  document.querySelectorAll('.pill').forEach((p,i) => p.classList.toggle('active', i === 0));
   render();
 }
 
