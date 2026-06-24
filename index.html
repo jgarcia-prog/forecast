@@ -1242,13 +1242,16 @@ Phelps Dodge&#9;8400000&#9;9100000&#9;8700000
   <div class="card">
     <div class="card-header">
       <div>
-        <div class="card-title">📈 Tendencia por Vendedor — Últimos 9 meses + Proyección Q3 2026</div>
+        <div class="card-title">📈 Tendencia — Últimos 9 meses + Proyección Q3 2026</div>
         <div class="card-sub">Detalle mensual con factores de ajuste aplicados</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
-        <span class="filter-label">Marca:</span>
-        <select id="tendenciaMarcaSel" class="filter-select" onchange="setTendenciaMarca(this.value)"><option value="">Todas (total vendedor)</option></select>
-        <input type="text" class="search-input" placeholder="🔍 Buscar vendedor..." id="searchTendencia" oninput="filterTable('tendenciaTable',this.value,0)">
+        <span class="filter-label">Ver por:</span>
+        <div class="pill-group">
+          <div class="pill active" id="tendPillVend" onclick="setTendenciaView('vendedor')">Vendedor</div>
+          <div class="pill" id="tendPillMarca" onclick="setTendenciaView('marca')">Marca</div>
+        </div>
+        <input type="text" class="search-input" placeholder="🔍 Buscar..." id="searchTendencia" oninput="filterTable('tendenciaTable',this.value,0)">
       </div>
     </div>
     <div class="table-wrap">
@@ -1385,7 +1388,7 @@ let state = {
   filterPortfolio: 'all',
   filterVendedor: '',
   filterMarca: '',
-  tendenciaMarca: '',
+  tendenciaView: 'vendedor',
   charts: {}
 };
 
@@ -1433,15 +1436,6 @@ function populateFilters() {
   Object.keys(RAW_DATA.marcas).sort().forEach(m => {
     const o = document.createElement('option'); o.value = m; o.text = m; selM.add(o);
   });
-
-  // Tendencia: select de marca
-  const tSelM = document.getElementById('tendenciaMarcaSel');
-  if (tSelM) {
-    tSelM.length = 1; // keep "Todas" option
-    Object.keys(RAW_DATA.marcas).sort((a,b) => a.localeCompare(b,'es')).forEach(m => {
-      const o = document.createElement('option'); o.value = m; o.text = m; tSelM.add(o);
-    });
-  }
 }
 
 // ==================== CALCULATIONS ====================
@@ -2924,8 +2918,10 @@ function renderClientTable(clientProj) {
 }
 
 // ==================== TENDENCIA (TAB 11) ====================
-function setTendenciaMarca(val) {
-  state.tendenciaMarca = val;
+function setTendenciaView(mode) {
+  state.tendenciaView = mode;
+  document.getElementById('tendPillVend').classList.toggle('active', mode === 'vendedor');
+  document.getElementById('tendPillMarca').classList.toggle('active', mode === 'marca');
   render();
 }
 
@@ -2937,88 +2933,64 @@ function shortMonthLabel(m) {
   return m;
 }
 
-function renderTendenciaTab(vendProj, marcaProj, grid) {
+function renderTendenciaTab(vendProj, marcaProj) {
   const head = document.getElementById('tendenciaTableHead');
   if (!head) return; // tab not in DOM yet
 
-  const marca = state.tendenciaMarca;
+  const byMarca = state.tendenciaView === 'marca';
   const allMonths = RAW_DATA.months || [];
   const histLabels = allMonths.slice(-9).map(shortMonthLabel);
   const projLabels = ['Jul-26', 'Ago-26', 'Sep-26'];
 
-  head.innerHTML = '<th>Zona de Venta</th><th>Portafolio</th>' +
+  head.innerHTML = `<th>${byMarca ? 'Marca' : 'Zona de Venta'}</th><th>Portafolio</th>` +
     histLabels.map(m => `<th class="num">${m}</th>`).join('') +
-    projLabels.map(m => `<th class="num" style="color:var(--gold)">${m}</th>`).join('') +
-    '<th class="num">Total Q3 2026 (¢)</th><th class="num">Var % vs Q3 2025</th>';
+    projLabels.map(m => `<th class="num" style="color:var(--gold)">${m}</th>`).join('');
 
   const PORT_COLORS_T = { 'Portafolio 1': '#dc2626', 'Portafolio 2': '#06b6d4', 'Portafolio 3': '#1e3a8a' };
   const vendPort = RAW_DATA.vendedorPortafolio || {};
 
-  const rows = Object.keys(RAW_DATA.vendedores)
-    .sort((a,b) => a.replace(/^\d+-/,'').trim().localeCompare(b.replace(/^\d+-/,'').trim(), 'es'))
-    .map(v => {
-      let hist9, proj3, histQ3_2025;
-      if (marca) {
-        const vmh = RAW_DATA.vendMarcaHist?.[marca]?.[v];
-        if (vmh && vmh.hist) {
-          hist9 = vmh.hist.slice(-9);
-          histQ3_2025 = vmh.h25 || 0;
-        } else {
-          // Sin data granular para esta combinación → reparte el histórico de
-          // la marca según el peso real del vendedor en esa marca
-          const marcaHist = RAW_DATA.marcas[marca]?.historico || [];
-          const weights = RAW_DATA.vendMarcaHist?.[marca] || {};
-          const totalW = Object.values(weights).reduce((s,w) => s + (w.w || 0), 0);
-          const myW = weights[v]?.w || 0;
-          const share = totalW > 0 ? myW / totalW : 0;
-          hist9 = marcaHist.slice(-9).map(x => x * share);
-          histQ3_2025 = getHistQ2(marcaHist, 2025) * share;
-        }
-        proj3 = (grid[v] && grid[v][marca]) ? grid[v][marca] : [0,0,0];
-      } else {
+  const portBadgeFor = port => port
+    ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:${PORT_COLORS_T[port]||'var(--text3)'};background:${(PORT_COLORS_T[port]||'#8fa3c0')}18;padding:2px 7px;border-radius:4px;border:1px solid ${(PORT_COLORS_T[port]||'#8fa3c0')}40">${port}</span>`
+    : `<span style="display:inline-flex;align-items:center;font-size:10px;font-weight:600;color:#1a1a1a;background:#fff;padding:2px 7px;border-radius:4px;border:1px solid #ccc">Portafolio 0</span>`;
+
+  let rows;
+  if (byMarca) {
+    rows = Object.keys(RAW_DATA.marcas)
+      .sort((a,b) => a.localeCompare(b, 'es'))
+      .map(m => {
+        const d = RAW_DATA.marcas[m];
+        const hist9 = (d?.historico || []).slice(-9);
+        const proj3 = marcaProj[m] ? marcaProj[m].proj : [0,0,0];
+        return { label: m, hist9, proj3, portBadge: portBadgeFor(d?.portafolio || '') };
+      });
+  } else {
+    rows = Object.keys(RAW_DATA.vendedores)
+      .sort((a,b) => a.replace(/^\d+-/,'').trim().localeCompare(b.replace(/^\d+-/,'').trim(), 'es'))
+      .map(v => {
         const d = RAW_DATA.vendedores[v];
-        hist9 = (d?.historico || []).slice(-9);
-        histQ3_2025 = getHistQ2(d?.historico || [], 2025);
-        proj3 = vendProj[v] ? vendProj[v].proj : [0,0,0];
-      }
-
-      const total = proj3.reduce((a,b) => a+b, 0);
-      const varPct = histQ3_2025 > 0 ? ((total - histQ3_2025) / histQ3_2025 * 100) : 0;
-      const port = vendPort[v] || '';
-      const portColor = PORT_COLORS_T[port] || 'var(--text3)';
-      const portBadge = port
-        ? `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:${portColor};background:${portColor}18;padding:2px 7px;border-radius:4px;border:1px solid ${portColor}40">${port}</span>`
-        : `<span style="display:inline-flex;align-items:center;font-size:10px;font-weight:600;color:#1a1a1a;background:#fff;padding:2px 7px;border-radius:4px;border:1px solid #ccc">Portafolio 0</span>`;
-
-      return { v, hist9, proj3, total, varPct, portBadge };
-    });
+        const hist9 = (d?.historico || []).slice(-9);
+        const proj3 = vendProj[v] ? vendProj[v].proj : [0,0,0];
+        return { label: v.replace(/^\d+-/,'').trim(), hist9, proj3, portBadge: portBadgeFor(vendPort[v] || '') };
+      });
+  }
 
   const tbody = document.getElementById('tendenciaTableBody');
   tbody.innerHTML = rows.map(r => `<tr>
-    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${r.v.replace(/^\d+-/,'').trim()}</td>
+    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${r.label}</td>
     <td>${r.portBadge}</td>
     ${r.hist9.map(x => `<td class="num">${fmt(x)}</td>`).join('')}
     ${r.proj3.map(x => `<td class="num" style="color:var(--gold);font-weight:600">${fmt(x)}</td>`).join('')}
-    <td class="num" style="color:var(--teal);font-weight:700">${fmt(r.total)}</td>
-    <td class="num ${r.varPct>=0?'pos':'neg'}">${fmtPct(r.varPct)}</td>
   </tr>`).join('');
 
   const nHist = histLabels.length;
   const histTotals = Array(nHist).fill(0).map((_,i) => rows.reduce((s,r) => s + (r.hist9[i]||0), 0));
   const projTotals = [0,1,2].map(i => rows.reduce((s,r) => s + (r.proj3[i]||0), 0));
-  const grandTotal  = rows.reduce((s,r) => s + r.total, 0);
-  const grandHist25 = rows.reduce((s,r) => s + (marca
-    ? (RAW_DATA.vendMarcaHist?.[marca]?.[r.v]?.h25 || 0)
-    : getHistQ2(RAW_DATA.vendedores[r.v]?.historico || [], 2025)), 0);
-  const grandVar = grandHist25 > 0 ? ((grandTotal - grandHist25) / grandHist25 * 100) : 0;
 
   const tfoot = document.getElementById('tendenciaTableFoot');
   tfoot.innerHTML = `<tr class="total-row">
     <td><strong>TOTAL</strong></td><td>—</td>
     ${histTotals.map(x => `<td class="num"><strong>${fmt(x)}</strong></td>`).join('')}
     ${projTotals.map(x => `<td class="num" style="color:var(--gold)"><strong>${fmt(x)}</strong></td>`).join('')}
-    <td class="num" style="color:var(--teal)"><strong>${fmt(grandTotal)}</strong></td>
-    <td class="num ${grandVar>=0?'pos':'neg'}"><strong>${fmtPct(grandVar)}</strong></td>
   </tr>`;
 }
 
@@ -4384,7 +4356,7 @@ const SUPA_MONTH_LABELS = [
   'jul-24','ago-24','sep-24','oct-24','nov-24','dic-24',
   'ene-25','feb-25','mar-25','abr-25','may-25','jun-25',
   'jul-25','ago-25','sep-25','oct-25','nov-25','dic-25',
-  'ene-26','feb-26','mar-26','jul-26','ago-26','sep-26'
+  'ene-26','feb-26','mar-26','abr-26','may-26','jun-26'
 ];
 
 async function supaRPC(fn) {
@@ -5929,7 +5901,7 @@ function doReset() {
   state.filterPortfolio = 'all';
   state.filterVendedor = '';
   state.filterMarca = '';
-  state.tendenciaMarca = '';
+  state.tendenciaView = 'vendedor';
 
   // 4. Reset budget to original
   state.budgetTarget = RAW_DATA.presupuesto_q2;
@@ -5949,8 +5921,10 @@ function doReset() {
   if (filtPort) filtPort.value = 'all';
   const filtMarca = document.getElementById('filterMarca');
   if (filtMarca) filtMarca.value = '';
-  const tendMarca = document.getElementById('tendenciaMarcaSel');
-  if (tendMarca) tendMarca.value = '';
+  const tendPillVend = document.getElementById('tendPillVend');
+  const tendPillMarca = document.getElementById('tendPillMarca');
+  if (tendPillVend) tendPillVend.classList.add('active');
+  if (tendPillMarca) tendPillMarca.classList.remove('active');
 
   // 6. Clear file inputs so user can re-upload if desired
   document.querySelectorAll('input[type="file"]').forEach(inp => { inp.value = ''; });
