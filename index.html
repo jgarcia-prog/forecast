@@ -4338,6 +4338,34 @@ async function _doExportExcel(exportBtn) {
 
   XLSX.utils.book_append_sheet(wb, wsBD, '9_Base_de_Datos');
 
+  // ── HOJA 10: TENDENCIA VENDEDOR (9 meses históricos + 3 proyectados) ──────
+  const histLabelsXL = (RAW_DATA.months || []).slice(-9).map(shortMonthLabel);
+  const projLabelsXL = ['Jul-26','Ago-26','Sep-26'];
+  const tvH = ['Zona de Venta','Portafolio', ...histLabelsXL, ...projLabelsXL];
+  const tvRows = [tvH, ...Object.keys(RAW_DATA.vendedores)
+    .sort((a,b)=>a.replace(/^\d+-/,'').trim().localeCompare(b.replace(/^\d+-/,'').trim(),'es'))
+    .map(v => {
+      const d = RAW_DATA.vendedores[v];
+      const hist9 = (d?.historico || []).slice(-9);
+      const proj3 = vendProj[v] ? vendProj[v].proj : [0,0,0];
+      return [v.replace(/^\d+-/,'').trim(), vendPort[v] || 'Portafolio 0', ...hist9, ...proj3];
+    })];
+  const tvNumCols = Array.from({length: 12}, (_,i) => i + 2);
+  XLSX.utils.book_append_sheet(wb, mkWS(tvRows, [35,14, ...Array(12).fill(14)], tvNumCols, []), '10_Tendencia_Vendedor');
+
+  // ── HOJA 11: TENDENCIA MARCA (9 meses históricos + 3 proyectados) ─────────
+  const tmH = ['Marca','Portafolio', ...histLabelsXL, ...projLabelsXL];
+  const tmRows = [tmH, ...Object.keys(RAW_DATA.marcas)
+    .sort((a,b)=>a.localeCompare(b,'es'))
+    .map(m => {
+      const d = RAW_DATA.marcas[m];
+      const hist9 = (d?.historico || []).slice(-9);
+      const proj3 = marcaProj[m] ? marcaProj[m].proj : [0,0,0];
+      return [m, d?.portafolio || 'Sin Portafolio', ...hist9, ...proj3];
+    })];
+  const tmNumCols = Array.from({length: 12}, (_,i) => i + 2);
+  XLSX.utils.book_append_sheet(wb, mkWS(tmRows, [32,16, ...Array(12).fill(14)], tmNumCols, []), '11_Tendencia_Marca');
+
   if (exportBtn) exportBtn.textContent = '⏳ Escribiendo Excel...';
   XLSX.writeFile(wb, 'Forecast_COFERSA_Q3_2026.xlsx');
 }
