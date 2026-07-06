@@ -1381,7 +1381,7 @@ let state = {
   blendWeight: 0.60,
   smoothOutliers: false,
   smoothSigma: 2.0,
-  projWeights: null,
+  budgetWeights:  null,
   reasignaciones: [],
   budgetTarget: null,
   filterPortfolio: 'all',
@@ -1546,19 +1546,20 @@ function computeVendProjections() {
     }
 
     result[vend] = {
-      proj: state.projWeights
-        ? (() => { const T = proj.reduce((a,b)=>a+b,0); return state.projWeights.map(w => T * w); })()
-        : proj,
+      proj,
       histQ2_2025,
       histQ2_2024,
       avgMonthly: d.historico.slice(12, 24).reduce((a, b) => a + b, 0) / 12
     };
   });
 
-  // If user set manual monthly distribution, redistribute each vendor's total
-  // across months using the specified weights (Q2 total per vendor is preserved)
-  if (state.projWeights) {
-    const w = state.projWeights;
+  // SIEMPRE redistribuye el total mensual usando los pesos del Presupuesto,
+  // para que Meta Q3 2026 tenga exactamente los mismos % Jul/Ago/Sep que
+  // el Presupuesto Q3 2026. Si budgetWeights no está definido aún (primer
+  // render), devuelve la distribución natural y getBudgetMonthlyWeights()
+  // la almacenará como referencia en la siguiente llamada.
+  if (state.budgetWeights) {
+    const w = state.budgetWeights;
     Object.values(result).forEach(v => {
       const total = v.proj.reduce((a, b) => a + b, 0);
       v.proj = w.map(wi => total * wi);
@@ -3187,14 +3188,16 @@ function updateBudget(val) {
 // Calculate historical monthly weights for Q2 (Abr/May/Jun) from past 2 years
 function getBudgetMonthlyWeights() {
   if (state.budgetWeights) return state.budgetWeights;
-  // Compute from current natural projection distribution and store as the
-  // canonical weight — both Presupuesto AND Meta use these same percentages
+  // Primera vez: calcula desde la distribución natural del modelo.
+  // state.budgetWeights está null aquí, entonces computeVendProjections()
+  // NO redistribuirá (el bloque if(state.budgetWeights) no se ejecuta)
+  // → sin recursión infinita.
   const vendProj = computeVendProjections();
   const totals = [0, 1, 2].map(i => Object.values(vendProj).reduce((s, v) => s + v.proj[i], 0));
   const grand = totals.reduce((a, b) => a + b, 0);
   const w = grand > 0 ? totals.map(t => t / grand) : [1/3, 1/3, 1/3];
-  // Seed projWeights too so Meta and Presupuesto start aligned
-  if (!state.projWeights) state.projWeights = w.slice();
+  // Persiste para que todos los renders siguientes usen el mismo %
+  state.budgetWeights = w;
   return w;
 }
 
@@ -3230,27 +3233,9 @@ function renderBudgetBreakdown() {
 }
 
 function updateProjWeight(idx, val) {
-  // Initialize from current natural distribution if not yet set
-  if (!state.projWeights) {
-    const vp = computeVendProjections();
-    const tots = [0,1,2].map(i => Object.values(vp).reduce((s,v)=>s+v.proj[i],0));
-    const grand = tots.reduce((a,b)=>a+b,0);
-    state.projWeights = grand > 0 ? tots.map(t => t/grand) : [1/3, 1/3, 1/3];
-  }
-  const newPct = Math.max(0, Math.min(100, parseFloat(val) || 0)) / 100;
-  const w = state.projWeights.slice();
-  w[idx] = newPct;
-  // Redistribute remaining proportionally across other two months
-  const remaining = 1 - newPct;
-  const others = [0,1,2].filter(i => i !== idx);
-  const otherSum = w[others[0]] + w[others[1]];
-  if (otherSum > 0) {
-    others.forEach(i => { w[i] = (w[i] / otherSum) * remaining; });
-  } else {
-    others.forEach(i => { w[i] = remaining / 2; });
-  }
-  state.projWeights = w;
-  render();
+  // projWeights ya no es estado independiente — la distribución mensual
+  // siempre viene del Presupuesto. Redirigir al mismo handler.
+  updateBudgetWeight(idx, val);
 }
 
 function updateBudgetWeight(idx, val) {
@@ -3258,10 +3243,6 @@ function updateBudgetWeight(idx, val) {
   const w = getBudgetMonthlyWeights().slice();
   w[idx] = Math.max(0, Math.min(100, parseFloat(val) || 0)) / 100;
   state.budgetWeights = w;
-
-  // META Q3 siempre usa los mismos pesos porcentuales que el Presupuesto
-  // para que Jul/Ago/Sep% coincidan exactamente en ambas tarjetas
-  state.projWeights = w.slice();
   const b = state.budgetTarget;
   const ids = ['bw_abr', 'bw_may', 'bw_jun'];
   const labels = ['Jul', 'Ago', 'Sep'];
@@ -5234,7 +5215,6 @@ function saveState() {
       blendWeight:    state.blendWeight,
       smoothOutliers: state.smoothOutliers,
       smoothSigma:    state.smoothSigma,
-      projWeights:    state.projWeights,
       budgetWeights:  state.budgetWeights,
       filterPortfolio: state.filterPortfolio,
       filterVendedor:  state.filterVendedor,
@@ -5293,7 +5273,6 @@ function loadSavedState() {
     state.blendWeight    = s.blendWeight    ?? 0.60;
     state.smoothOutliers = s.smoothOutliers ?? false;
     state.smoothSigma    = s.smoothSigma    ?? 2.0;
-    state.projWeights    = s.projWeights    || null;
     state.budgetWeights  = s.budgetWeights  || null;
     state.filterPortfolio = s.filterPortfolio || 'all';
     state.filterVendedor  = s.filterVendedor  || '';
@@ -5938,7 +5917,6 @@ function doReset() {
   state.blendWeight    = 0.60;
   state.smoothOutliers = false;
   state.smoothSigma    = 2.0;
-  state.projWeights    = null;
   state.adjVsQ22025    = {};
   state.budgetWeights  = null;
   state.charts         = {};
