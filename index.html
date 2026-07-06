@@ -3187,12 +3187,15 @@ function updateBudget(val) {
 // Calculate historical monthly weights for Q2 (Abr/May/Jun) from past 2 years
 function getBudgetMonthlyWeights() {
   if (state.budgetWeights) return state.budgetWeights;
-  // Use current projection distribution (Abr/May/Jun proportions from projection)
+  // Compute from current natural projection distribution and store as the
+  // canonical weight — both Presupuesto AND Meta use these same percentages
   const vendProj = computeVendProjections();
   const totals = [0, 1, 2].map(i => Object.values(vendProj).reduce((s, v) => s + v.proj[i], 0));
   const grand = totals.reduce((a, b) => a + b, 0);
-  if (grand <= 0) return [1/3, 1/3, 1/3];
-  return totals.map(t => t / grand);
+  const w = grand > 0 ? totals.map(t => t / grand) : [1/3, 1/3, 1/3];
+  // Seed projWeights too so Meta and Presupuesto start aligned
+  if (!state.projWeights) state.projWeights = w.slice();
+  return w;
 }
 
 function renderBudgetBreakdown() {
@@ -3255,7 +3258,10 @@ function updateBudgetWeight(idx, val) {
   const w = getBudgetMonthlyWeights().slice();
   w[idx] = Math.max(0, Math.min(100, parseFloat(val) || 0)) / 100;
   state.budgetWeights = w;
-  // Only update the amount labels, not the input values (avoid cursor reset)
+
+  // META Q3 siempre usa los mismos pesos porcentuales que el Presupuesto
+  // para que Jul/Ago/Sep% coincidan exactamente en ambas tarjetas
+  state.projWeights = w.slice();
   const b = state.budgetTarget;
   const ids = ['bw_abr', 'bw_may', 'bw_jun'];
   const labels = ['Jul', 'Ago', 'Sep'];
