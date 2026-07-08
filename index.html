@@ -3568,7 +3568,8 @@ async function sendEmailSingle(mode, idx) {
       const vpIdx = {};
       Object.entries(vendProjAll).forEach(([k,vv]) => { vpIdx[normKeyS(k)] = vv; });
       const proj = vendProjAll[v.vendedor] || vpIdx[normKeyS(v.vendedor)] || null;
-      if (!proj) throw new Error(`Sin proyección para ${v.vendedor}`);
+      // proj puede ser null si el vendedor no tiene histórico en el modelo
+      // (vendedor nuevo). buildVCMPayload tiene fallback con pesos de presupuesto.
       const { clientes, totals } = await buildVCMPayload(vcmData, v.vendedor, proj);
       payload = [{ vendedor: v.vendedor, correo: testMode ? testEmail : v.correo, correo_supervisor: testMode ? testEmail : v.correo_supervisor, clientes, totals }];
     }
@@ -3741,8 +3742,7 @@ async function previewEmail() {
     for(const cb of checked.slice(0,5)){
       const v=_emailVendorData[parseInt(cb.dataset.idx)];
       if(!v)continue;
-      const proj = safeVP(v.vendedor);
-      if (!proj) continue;
+      const proj = safeVP(v.vendedor); // puede ser null → buildVCMPayload usa fallback
       const{clientes,totals}=await buildVCMPayload(vcmData,v.vendedor,proj);
       _previewList.push({v,html:buildEmailHTML(v.vendedor,totals,clientes)});
     }
@@ -3794,14 +3794,9 @@ async function sendEmails(){
       for(const cb of checked){
         const v=_emailVendorData[parseInt(cb.dataset.idx)];
         if(!v)continue;
-        const proj = safeVendProj(v.vendedor);
-        if (!proj) {
-          // Vendedor sin historico en el modelo (supervisor, oficina, etc.)
-          // — omitir silenciosamente en lugar de lanzar un error
-          console.warn(`[email] Vendedor sin proyección: ${v.vendedor} — omitido`);
-          continue;
-        }
+        const proj = safeVendProj(v.vendedor); // puede ser null → buildVCMPayload usa fallback
         const{clientes,totals}=await buildVCMPayload(vcmData,v.vendedor,proj);
+        if (!totals.meta_q3) continue; // sin datos de ningún tipo → omitir
         vendedores.push({vendedor:v.vendedor,correo:v.correo,correo_supervisor:v.correo_supervisor,clientes,totals});
       }
     }
