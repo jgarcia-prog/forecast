@@ -3681,22 +3681,41 @@ async function buildVCMPayload(vcmData, vendedor, vendProjData) {
     projData = key ? vendProj[key] : null;
   }
   const proj = projData?.proj || [0,0,0];
-  const totals={
+  const projTotal = proj.reduce((a,b)=>a+b,0);
+  const clientTotal = clientes.reduce((s,c)=>s+c.meta_q3,0);
+  const meta_q3 = projTotal || clientTotal;
+
+  // Si el modelo devuelve proj=[0,0,0] pero hay un total válido por clientes,
+  // repartir mensualmente usando los pesos del Presupuesto para que
+  // Jul/Ago/Sep no aparezcan en ¢0 en el correo.
+  let meta_jul, meta_ago, meta_sep;
+  if (projTotal > 0) {
+    [meta_jul, meta_ago, meta_sep] = proj;
+  } else if (meta_q3 > 0) {
+    const bw = (typeof getBudgetMonthlyWeights === 'function')
+      ? getBudgetMonthlyWeights()
+      : [1/3, 1/3, 1/3];
+    [meta_jul, meta_ago, meta_sep] = bw.map(w => meta_q3 * w);
+  } else {
+    [meta_jul, meta_ago, meta_sep] = [0, 0, 0];
+  }
+
+  const totals = {
     hist_q3_2025: clientes.reduce((s,c)=>s+c.hist_q3_2025,0),
     hist_q3_2024: clientes.reduce((s,c)=>s+c.hist_q3_2024,0),
-    meta_q3: proj.reduce((a,b)=>a+b,0) || clientes.reduce((s,c)=>s+c.meta_q3,0),
-    meta_jul: proj[0],
-    meta_ago: proj[1],
-    meta_sep: proj[2]
+    meta_q3,
+    meta_jul,
+    meta_ago,
+    meta_sep
   };
   return {clientes,totals};
 }
 
 async function loadVCMEmailData() {
-  if(window._vcmEmailFullData)return window._vcmEmailFullData;
+  // Sin cache: siempre datos frescos de Supabase para evitar que correcciones
+  // de nombres en la BD queden atrapadas en memoria de la sesión.
   const res=await fetch(`${SUPA_URL}/rest/v1/rpc/get_vcm_export?limit=50000`,{method:'POST',headers:{'Content-Type':'application/json','apikey':SUPA_KEY,'Authorization':`Bearer ${SUPA_KEY}`,'Prefer':'count=none'},body:'{}'});
-  window._vcmEmailFullData=await res.json();
-  return window._vcmEmailFullData;
+  return await res.json();
 }
 
 async function previewEmail() {
