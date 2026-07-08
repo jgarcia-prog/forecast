@@ -3639,8 +3639,27 @@ function buildEmailHTML(vendedor, totals, clientes) {
 }
 
 async function buildVCMPayload(vcmData, vendedor, vendProjData) {
+  // Normalización robusta: elimina número prefijo, puntos finales, espacios
+  // extra y pasa a minúsculas — así "MICHAELL SOLANO" == "MICHAEL SOLANO"
+  // no ocurrirá más; los errores tipográficos leves tampoco afectarán.
+  const normV = s => s.replace(/^\d+-/,'').replace(/\.+$/,'').trim().toLowerCase()
+                      .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const nvend = normV(vendedor);
+
+  // Buscar filas de VCM que correspondan a este vendedor (con fallback fuzzy)
+  let rows = vcmData.filter(r => r.vendedor === vendedor);
+  if (rows.length === 0) {
+    // Exacto no encontró nada → buscar por nombre normalizado
+    rows = vcmData.filter(r => normV(r.vendedor) === nvend);
+  }
+  if (rows.length === 0) {
+    // Último recurso: el nombre del VCM empieza con el mismo número-código
+    const prefixNum = vendedor.match(/^(\d+)-/)?.[1];
+    if (prefixNum) rows = vcmData.filter(r => r.vendedor?.startsWith(prefixNum + '-'));
+  }
+
   const byAlias = {};
-  vcmData.filter(r=>r.vendedor===vendedor).forEach(r=>{
+  rows.forEach(r=>{
     if(!byAlias[r.alias])byAlias[r.alias]={alias:r.alias,nombre:r.cliente_nombre,marcas:[],hist_q3_2025:0,hist_q3_2024:0,meta_q3:0};
     byAlias[r.alias].hist_q3_2025+=Number(r.hist_q3_2025)||0;
     byAlias[r.alias].hist_q3_2024+=Number(r.hist_q3_2024)||0;
@@ -3653,12 +3672,11 @@ async function buildVCMPayload(vcmData, vendedor, vendProjData) {
   let projData = vendProjData;
   if (!projData || !projData.proj) {
     const vendProj = computeVendProjections();
-    const norm = v => v.replace(/^\d+-/, '').trim().toLowerCase();
-    const nv = norm(vendedor);
+    const norm = v => normV(v);
     const key = Object.keys(vendProj).find(k => {
       const nk = norm(k);
-      return nk === nv || nv.startsWith(nk) || nk.startsWith(nv) ||
-             nk.split(' ').slice(0,2).join(' ') === nv.split(' ').slice(0,2).join(' ');
+      return nk === nvend || nvend.startsWith(nk) || nk.startsWith(nvend) ||
+             nk.split(' ').slice(0,2).join(' ') === nvend.split(' ').slice(0,2).join(' ');
     });
     projData = key ? vendProj[key] : null;
   }
