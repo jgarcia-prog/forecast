@@ -4059,11 +4059,14 @@ async function _doExportExcel(exportBtn) {
   vcmData.forEach(r => {
     const cell = vcmSplit[r.vendedor]?.[r.marca]?.[r.alias];
     if (cell) {
-      r.proyectado_q3_2026 = cell.reduce((a,b)=>a+b,0);
+      r.meta_jul_2026     = cell[0];
+      r.meta_ago_2026     = cell[1];
+      r.meta_sep_2026     = cell[2];
+      r.proyectado_q3_2026 = cell[0] + cell[1] + cell[2];
       return;
     }
-    // Fallback: fila sin match exacto en el grid (p.ej. discrepancia de
-    // nombre) → reparto uniforme dentro del vendedor, como antes
+    // Fallback: fila sin match exacto en el grid → reparto uniforme dentro
+    // del vendedor basado en historial relativo, luego distribuir con pesos
     let modelTotal = vendModelTotal[r.vendedor];
     if (modelTotal === undefined) {
       const key = Object.keys(vendModelTotal).find(k => normVend(k) === normVend(r.vendedor));
@@ -4071,7 +4074,15 @@ async function _doExportExcel(exportBtn) {
     }
     const histSum = vendHistSum[r.vendedor] || 1;
     const h25 = Number(r.hist_q3_2025) || 0;
-    r.proyectado_q3_2026 = histSum > 0 ? (h25 / histSum) * modelTotal : 0;
+    const metaQ3 = histSum > 0 ? (h25 / histSum) * modelTotal : 0;
+    // Para el fallback, usar los pesos del vendedor del modelo (proj[0/1/2] / total)
+    const vProj = vendProj[r.vendedor] || Object.values(vendProj).find((_,i,a) => Object.keys(vendProj)[i] && normVend(Object.keys(vendProj)[i]) === normVend(r.vendedor));
+    const vp = vProj?.proj || [1/3, 1/3, 1/3];
+    const vpTotal = vp.reduce((a,b)=>a+b,0) || 1;
+    r.meta_jul_2026      = metaQ3 * vp[0] / vpTotal;
+    r.meta_ago_2026      = metaQ3 * vp[1] / vpTotal;
+    r.meta_sep_2026      = metaQ3 * vp[2] / vpTotal;
+    r.proyectado_q3_2026 = metaQ3;
   });
 
   // ── HOJA 1: RESUMEN ──────────────────────────────────────────────────────
@@ -4246,10 +4257,6 @@ async function _doExportExcel(exportBtn) {
     'Hist Q3 2024 ¢','Hist Q3 2025 ¢','Meta Jul 2026 ¢','Meta Ago 2026 ¢','Meta Sep 2026 ¢','Meta Q3 2026 ¢','Var %'];
   const vcmRows = [vcmH];
 
-  // Pesos mensuales del presupuesto para distribuir Meta Q3 en Jul/Ago/Sep
-  const [wJulV, wAgoV, wSepV] = getBudgetMonthlyWeights();
-  const splitMeta = (meta) => [Math.round(meta * wJulV), Math.round(meta * wAgoV), Math.round(meta * wSepV)];
-
   if (vcmData.length > 0) {
     const byVend = {};
     vcmData.forEach(r => {
@@ -4262,30 +4269,35 @@ async function _doExportExcel(exportBtn) {
       const vendClients = byVend[vend];
       const vendH24  = Object.values(vendClients).reduce((s,c)=>s+c.marcas.reduce((ss,m)=>ss+(Number(m.hist_q3_2024)||0),0),0);
       const vendH25  = Object.values(vendClients).reduce((s,c)=>s+c.marcas.reduce((ss,m)=>ss+(Number(m.hist_q3_2025)||0),0),0);
-      const vendMeta = Object.values(vendClients).reduce((s,c)=>s+c.marcas.reduce((ss,m)=>ss+(m.proyectado_q3_2026||0),0),0);
+      const vendJul  = Object.values(vendClients).reduce((s,c)=>s+c.marcas.reduce((ss,m)=>ss+(m.meta_jul_2026||0),0),0);
+      const vendAgo  = Object.values(vendClients).reduce((s,c)=>s+c.marcas.reduce((ss,m)=>ss+(m.meta_ago_2026||0),0),0);
+      const vendSep  = Object.values(vendClients).reduce((s,c)=>s+c.marcas.reduce((ss,m)=>ss+(m.meta_sep_2026||0),0),0);
+      const vendMeta = vendJul + vendAgo + vendSep;
       const vendVar  = vendH25>0?(vendMeta-vendH25)/vendH25:0;
-      const [vJul, vAgo, vSep] = splitMeta(vendMeta);
-      vcmRows.push(['ZONA', vend.replace(/^\d+-/,'').trim(), '','','','','', Math.round(vendH24), Math.round(vendH25), vJul, vAgo, vSep, Math.round(vendMeta), vendVar]);
+      vcmRows.push(['ZONA', vend.replace(/^\d+-/,'').trim(), '','','','','', Math.round(vendH24), Math.round(vendH25), Math.round(vendJul), Math.round(vendAgo), Math.round(vendSep), Math.round(vendMeta), vendVar]);
 
       Object.entries(vendClients)
         .sort((a,b)=>b[1].marcas.reduce((s,m)=>s+(Number(m.hist_q3_2025)||0),0)-a[1].marcas.reduce((s,m)=>s+(Number(m.hist_q3_2025)||0),0))
         .forEach(([alias, cd]) => {
           const cH24  = cd.marcas.reduce((s,m)=>s+(Number(m.hist_q3_2024)||0),0);
           const cH25  = cd.marcas.reduce((s,m)=>s+(Number(m.hist_q3_2025)||0),0);
-          const cMeta = cd.marcas.reduce((s,m)=>s+(m.proyectado_q3_2026||0),0);
+          const cJul  = cd.marcas.reduce((s,m)=>s+(m.meta_jul_2026||0),0);
+          const cAgo  = cd.marcas.reduce((s,m)=>s+(m.meta_ago_2026||0),0);
+          const cSep  = cd.marcas.reduce((s,m)=>s+(m.meta_sep_2026||0),0);
+          const cMeta = cJul + cAgo + cSep;
           if (cMeta < 10000) return;
           const cVar = cH25>0?(cMeta-cH25)/cH25:0;
-          const [cJul, cAgo, cSep] = splitMeta(cMeta);
-          vcmRows.push(['  CLIENTE', '  '+vend.replace(/^\d+-/,'').trim(), cd.nombre||alias, cd.cod||'', alias, '','', Math.round(cH24), Math.round(cH25), cJul, cAgo, cSep, Math.round(cMeta), cVar]);
+          vcmRows.push(['  CLIENTE', '  '+vend.replace(/^\d+-/,'').trim(), cd.nombre||alias, cd.cod||'', alias, '','', Math.round(cH24), Math.round(cH25), Math.round(cJul), Math.round(cAgo), Math.round(cSep), Math.round(cMeta), cVar]);
 
           cd.marcas
             .sort((a,b)=>(Number(b.hist_q3_2025)||0)-(Number(a.hist_q3_2025)||0))
             .forEach(m => {
-              const mH24=Number(m.hist_q3_2024)||0, mH25=Number(m.hist_q3_2025)||0, mMeta=m.proyectado_q3_2026||0;
+              const mH24=Number(m.hist_q3_2024)||0, mH25=Number(m.hist_q3_2025)||0;
+              const mJul=m.meta_jul_2026||0, mAgo=m.meta_ago_2026||0, mSep=m.meta_sep_2026||0;
+              const mMeta=mJul+mAgo+mSep;
               if(mMeta<1000)return;
               const mVar=mH25>0?(mMeta-mH25)/mH25:0;
-              const [mJul, mAgo, mSep] = splitMeta(mMeta);
-              vcmRows.push(['    MARCA','    '+vend.replace(/^\d+-/,'').trim(), cd.nombre||alias, cd.cod||'', alias, m.portafolio||'', m.marca||'', Math.round(mH24), Math.round(mH25), mJul, mAgo, mSep, Math.round(mMeta), mVar]);
+              vcmRows.push(['    MARCA','    '+vend.replace(/^\d+-/,'').trim(), cd.nombre||alias, cd.cod||'', alias, m.portafolio||'', m.marca||'', Math.round(mH24), Math.round(mH25), Math.round(mJul), Math.round(mAgo), Math.round(mSep), Math.round(mMeta), mVar]);
             });
         });
     });
