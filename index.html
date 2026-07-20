@@ -564,12 +564,35 @@ body {
       Guardar
     </button>
 
+    <button onclick="openVersionsModal()" title="Historial de versiones guardadas" style="display:inline-flex;align-items:center;gap:6px;padding:0 11px;height:32px;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;background:#f5f3ff;color:#6d28d9;border:none;white-space:nowrap">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
+      Versiones
+    </button>
+
+    <button id="lockBtn" onclick="toggleLock()" title="Bloquear/desbloquear edición" style="display:inline-flex;align-items:center;gap:6px;padding:0 11px;height:32px;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;background:#f0fdf4;color:#059669;border:none;white-space:nowrap">
+      <span id="lockIcon">🔓</span><span id="lockLabel">Abierto</span>
+    </button>
+
     <button onclick="openEmailModal()" style="display:inline-flex;align-items:center;gap:6px;padding:0 14px;height:32px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;background:#009ee3;color:#fff;border:none;white-space:nowrap">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
       Enviar Metas
     </button>
 
     <span id="saveIndicator" style="display:none;font-size:11px;color:var(--text3);margin-left:2px"></span>
+  </div>
+</div>
+
+<!-- ==================== VERSIONS MODAL ==================== -->
+<div id="versionsModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border-radius:16px;width:520px;max-width:94vw;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,0.4)">
+    <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:16px;font-weight:700;color:var(--text)">🕐 Historial de versiones</div>
+      <button onclick="closeVersionsModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text2)">✕</button>
+    </div>
+    <div id="versionsList" style="padding:16px 24px;overflow-y:auto;flex:1"></div>
+    <div style="padding:14px 24px;border-top:1px solid var(--border);font-size:11px;color:var(--text3)">
+      Se guardan las últimas 8 versiones. Cada "Guardar" manual crea una nueva versión con nombre opcional.
+    </div>
   </div>
 </div>
 
@@ -1413,6 +1436,7 @@ document.addEventListener('DOMContentLoaded', () => {
   renderAdjPanels();
   renderReasigList();
   render();
+  applyLockUI();
 
   if (restored) {
     document.getElementById('dataStatus').textContent = '● Estado restaurado';
@@ -1950,6 +1974,7 @@ function render() {
   renderClientTable(clientProj);
   renderAdjPanels();
   renderTendenciaTab(vendProj, marcaProj, vcmGrid);
+  if (typeof applyLockUI === 'function' && isLocked()) applyLockUI();
 }
 
 function fmt(v) {
@@ -3125,6 +3150,7 @@ function stepVendQ22025(v, id, delta) {
 }
 
 function setVendQ22025(v, id, val) {
+  if (guardLocked()) { render(); return; }
   const pct = parseFloat(val);
   if (!isNaN(pct)) {
     state.adjVsQ22025[v] = pct;
@@ -3141,6 +3167,7 @@ function setVendQ22025(v, id, val) {
 }
 
 function clearVendQ22025(v) {
+  if (guardLocked()) return;
   delete state.adjVsQ22025[v];
   renderAdjPanels();
   render();
@@ -3172,6 +3199,7 @@ function stepAdj(type, key, id, delta) {
 }
 
 function updateAdj(type, key, input) {
+  if (guardLocked()) { render(); return; }
   const val = parseFloat(input.value);
   state.adjustments[type][key] = val;
   const pct = (val + 50) / 100 * 100;
@@ -3211,6 +3239,7 @@ function filterTable(tableId, search, colIdx) {
 
 // ==================== AUTO-ADJUST ====================
 function updateBlendWeight(val) {
+  if (guardLocked()) return;
   const tw = Math.round(parseFloat(val));
   const sw = 100 - tw;
   state.blendWeight = tw / 100;
@@ -3284,6 +3313,7 @@ function updateProjWeight(idx, val) {
 }
 
 function updateBudgetWeight(idx, val) {
+  if (guardLocked()) { render(); return; }
   // Get current weights without auto-rebalancing
   const w = getBudgetMonthlyWeights().slice();
   w[idx] = Math.max(0, Math.min(100, parseFloat(val) || 0)) / 100;
@@ -3862,6 +3892,17 @@ async function sendEmails(){
       let msg=`\u2705 ${sent} correo${sent!==1?'s':''} enviado${sent!==1?'s':''} correctamente.`;
       if(errs.length)msg+=` \u26a0\ufe0f ${errs.length} error(es): ${errs.map(e=>e.vendedor.replace(/^\d+-/,'').trim()).join(', ')}`;
       document.getElementById('emailStatus').innerHTML=`<span style="color:var(--teal)">${msg}</span>`;
+
+      // Ofrecer bloqueo automático tras envío real exitoso (no en modo prueba)
+      const testMode = document.getElementById('testModeToggle')?.checked;
+      if (sent > 0 && !testMode && !isLocked()) {
+        setTimeout(() => {
+          if (confirm('\u2705 Metas enviadas.\n\n\ud83d\udd12 \u00bfBloquear la edici\u00f3n ahora para proteger los n\u00fameros comunicados?\n(Pod\u00e9s desbloquear en cualquier momento desde la barra superior)')) {
+            localStorage.setItem(LOCK_KEY, '1');
+            applyLockUI();
+          }
+        }, 600);
+      }
     }else{
       document.getElementById('emailStatus').innerHTML=`<span style="color:var(--red)">\u274c Error: ${result.error}</span>`;
     }
@@ -4846,6 +4887,7 @@ function updateSmoothSlider(val) {
 }
 
 function updateSmoothing() {
+  if (guardLocked()) return;
   state.smoothOutliers = document.getElementById('smoothToggle').checked;
   const ctrl = document.getElementById('smoothControls');
   ctrl.style.opacity = state.smoothOutliers ? '1' : '0.4';
@@ -5354,8 +5396,11 @@ async function callAI(prompt) {
 // ==================== PERSISTENCIA ====================
 const STORAGE_KEY = 'forecast_cofersa_state_v1';
 
-function saveState() {
-  const snapshot = {
+const VERSIONS_KEY = 'forecast_cofersa_versions_v1';
+const LOCK_KEY     = 'forecast_cofersa_locked_v1';
+
+function buildSnapshot() {
+  return {
     savedAt: new Date().toISOString(),
     state: {
       adjustments:    state.adjustments,
@@ -5371,13 +5416,35 @@ function saveState() {
       filterVendedor:  state.filterVendedor,
       filterMarca:     state.filterMarca
     },
-    // Save RAW_DATA only if it was modified via file upload
     rawDataModified: !!window._rawDataModified,
     rawData: window._rawDataModified ? JSON.parse(JSON.stringify(RAW_DATA)) : null
   };
+}
+
+function saveState() {
+  const snapshot = buildSnapshot();
+
+  // Nombre opcional de la versión
+  const nombre = prompt('Nombre para esta versión (opcional):', '') || '';
+  snapshot.nombre = nombre.trim();
 
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+
+    // Agregar al historial de versiones (máx 8, sin RAW_DATA para ahorrar espacio
+    // salvo que haya sido modificado)
+    let versions = [];
+    try { versions = JSON.parse(localStorage.getItem(VERSIONS_KEY) || '[]'); } catch(e) {}
+    versions.unshift(snapshot);
+    while (versions.length > 8) versions.pop();
+    try {
+      localStorage.setItem(VERSIONS_KEY, JSON.stringify(versions));
+    } catch(e) {
+      // localStorage lleno → descartar rawData de versiones viejas y reintentar
+      versions.forEach((v,i) => { if (i > 0) { v.rawData = null; v.rawDataModified = false; } });
+      try { localStorage.setItem(VERSIONS_KEY, JSON.stringify(versions)); } catch(e2) {}
+    }
+
     const btn = document.getElementById('saveBtn');
     const orig = btn.innerHTML;
     btn.innerHTML = '✓ Guardado';
@@ -5387,6 +5454,96 @@ function saveState() {
   } catch(e) {
     alert('Error al guardar: ' + e.message);
   }
+}
+
+// ==================== HISTORIAL DE VERSIONES ====================
+function openVersionsModal() {
+  const list = document.getElementById('versionsList');
+  let versions = [];
+  try { versions = JSON.parse(localStorage.getItem(VERSIONS_KEY) || '[]'); } catch(e) {}
+
+  if (versions.length === 0) {
+    list.innerHTML = '<div style="text-align:center;color:var(--text3);padding:30px 0;font-size:13px">Aún no hay versiones guardadas.<br>Presioná "Guardar" para crear la primera.</div>';
+  } else {
+    list.innerHTML = versions.map((v, i) => {
+      const d = new Date(v.savedAt);
+      const fecha = d.toLocaleDateString('es-CR', {day:'2-digit', month:'short', year:'numeric'}) + ' ' + d.toLocaleTimeString('es-CR', {hour:'2-digit', minute:'2-digit'});
+      const nAdj = Object.keys(v.state?.marcaOverrides || {}).length +
+                    Object.values(v.state?.adjustments?.vendedores || {}).filter(x=>x!==0).length +
+                    Object.keys(v.state?.adjVsQ22025 || {}).length;
+      const nombre = v.nombre ? `<span style="font-weight:700;color:var(--text)">${v.nombre}</span> · ` : '';
+      return `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--bg3)">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px">${nombre}<span style="color:var(--text2)">${fecha}</span></div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${nAdj} ajuste(s) activos${v.rawDataModified ? ' · datos modificados' : ''}</div>
+        </div>
+        <button onclick="restoreVersion(${i})" style="padding:6px 12px;font-size:11px;font-weight:600;border:1px solid var(--teal);background:rgba(0,122,101,0.08);color:var(--teal);border-radius:7px;cursor:pointer;white-space:nowrap">↩ Restaurar</button>
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('versionsModal').style.display = 'flex';
+}
+
+function closeVersionsModal() {
+  document.getElementById('versionsModal').style.display = 'none';
+}
+
+function restoreVersion(idx) {
+  let versions = [];
+  try { versions = JSON.parse(localStorage.getItem(VERSIONS_KEY) || '[]'); } catch(e) {}
+  const v = versions[idx];
+  if (!v) return;
+  if (!confirm('¿Restaurar esta versión? Los cambios no guardados actuales se perderán.')) return;
+
+  // Aplicar como si fuera el estado guardado principal y recargar la página
+  // (la ruta más segura: reutiliza loadSavedState en el arranque)
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(v));
+  location.reload();
+}
+
+// ==================== BLOQUEO DE EDICIÓN ====================
+function isLocked() {
+  try { return localStorage.getItem(LOCK_KEY) === '1'; } catch(e) { return false; }
+}
+
+function applyLockUI() {
+  const locked = isLocked();
+  const icon = document.getElementById('lockIcon');
+  const label = document.getElementById('lockLabel');
+  const btn = document.getElementById('lockBtn');
+  if (icon)  icon.textContent  = locked ? '🔒' : '🔓';
+  if (label) label.textContent = locked ? 'Bloqueado' : 'Abierto';
+  if (btn) {
+    btn.style.background = locked ? '#fef2f2' : '#f0fdf4';
+    btn.style.color      = locked ? '#dc2626' : '#059669';
+  }
+  // Deshabilitar visualmente todos los inputs de ajuste
+  document.querySelectorAll('.adj-range, .adj-item input, #globalAdj, #budgetInput').forEach(el => {
+    el.disabled = locked;
+    el.style.opacity = locked ? '0.45' : '';
+    el.style.pointerEvents = locked ? 'none' : '';
+  });
+}
+
+function toggleLock() {
+  const locked = isLocked();
+  if (!locked) {
+    if (!confirm('🔒 ¿Bloquear la edición de metas?\n\nÚsalo después de enviar los correos para evitar cambios accidentales. Podés desbloquear en cualquier momento.')) return;
+    localStorage.setItem(LOCK_KEY, '1');
+  } else {
+    if (!confirm('🔓 ¿Desbloquear la edición?')) return;
+    localStorage.removeItem(LOCK_KEY);
+  }
+  applyLockUI();
+  render();
+}
+
+function guardLocked() {
+  if (isLocked()) {
+    alert('🔒 La edición está bloqueada (metas ya enviadas).\n\nUsá el botón "Bloqueado" en la barra superior para desbloquear si necesitás hacer cambios.');
+    return true;
+  }
+  return false;
 }
 
 function updateSaveIndicator(isoDate) {
@@ -5869,6 +6026,7 @@ function showToast(msg) {
 }
 
 function editMarcaCell(td, marca, monthIdx) {
+  if (guardLocked()) return;
   if (td.querySelector('input')) return; // already editing
   const marcaProj = computeMarcaProjections();
   const cur = marcaProj[marca];
@@ -5935,6 +6093,7 @@ function clearMarcaOverride(marca, event) {
 }
 
 function clearAllMarcaOverrides() {
+  if (guardLocked()) return;
   // Clear overrides AND their synced % adjustments
   Object.keys(state.marcaOverrides).forEach(m => { delete state.adjustments.marcas[m]; });
   state.marcaOverrides = {};
@@ -6035,6 +6194,7 @@ function closeConfirm() {
 }
 
 function doReset() {
+  if (guardLocked()) { closeConfirm(); return; }
   closeConfirm();
 
   // 1. Restore original embedded data fully
