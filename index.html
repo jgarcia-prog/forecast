@@ -4243,8 +4243,12 @@ async function _doExportExcel(exportBtn) {
 
   // ── HOJA 8: VEND-CLIENTE-MARCA (usa vcmData ya cargado, escalado al modelo) ──
   const vcmH = ['Nivel','Zona de Venta','Razón Social','Código Cliente','Alias','Portafolio','Marca',
-    'Hist Q3 2024 ¢','Hist Q3 2025 ¢','Meta Q3 2026 ¢','Var %'];
+    'Hist Q3 2024 ¢','Hist Q3 2025 ¢','Meta Jul 2026 ¢','Meta Ago 2026 ¢','Meta Sep 2026 ¢','Meta Q3 2026 ¢','Var %'];
   const vcmRows = [vcmH];
+
+  // Pesos mensuales del presupuesto para distribuir Meta Q3 en Jul/Ago/Sep
+  const [wJulV, wAgoV, wSepV] = getBudgetMonthlyWeights();
+  const splitMeta = (meta) => [Math.round(meta * wJulV), Math.round(meta * wAgoV), Math.round(meta * wSepV)];
 
   if (vcmData.length > 0) {
     const byVend = {};
@@ -4256,21 +4260,23 @@ async function _doExportExcel(exportBtn) {
 
     Object.keys(byVend).sort((a,b)=>a.replace(/^\d+-/,'').trim().localeCompare(b.replace(/^\d+-/,'').trim(),'es')).forEach(vend => {
       const vendClients = byVend[vend];
-      const vendH24 = Object.values(vendClients).reduce((s,c)=>s+c.marcas.reduce((ss,m)=>ss+(Number(m.hist_q3_2024)||0),0),0);
-      const vendH25 = Object.values(vendClients).reduce((s,c)=>s+c.marcas.reduce((ss,m)=>ss+(Number(m.hist_q3_2025)||0),0),0);
+      const vendH24  = Object.values(vendClients).reduce((s,c)=>s+c.marcas.reduce((ss,m)=>ss+(Number(m.hist_q3_2024)||0),0),0);
+      const vendH25  = Object.values(vendClients).reduce((s,c)=>s+c.marcas.reduce((ss,m)=>ss+(Number(m.hist_q3_2025)||0),0),0);
       const vendMeta = Object.values(vendClients).reduce((s,c)=>s+c.marcas.reduce((ss,m)=>ss+(m.proyectado_q3_2026||0),0),0);
-      const vendVar = vendH25>0?(vendMeta-vendH25)/vendH25:0;
-      vcmRows.push(['ZONA', vend.replace(/^\d+-/,'').trim(), '','','','','', Math.round(vendH24), Math.round(vendH25), Math.round(vendMeta), vendVar]);
+      const vendVar  = vendH25>0?(vendMeta-vendH25)/vendH25:0;
+      const [vJul, vAgo, vSep] = splitMeta(vendMeta);
+      vcmRows.push(['ZONA', vend.replace(/^\d+-/,'').trim(), '','','','','', Math.round(vendH24), Math.round(vendH25), vJul, vAgo, vSep, Math.round(vendMeta), vendVar]);
 
       Object.entries(vendClients)
         .sort((a,b)=>b[1].marcas.reduce((s,m)=>s+(Number(m.hist_q3_2025)||0),0)-a[1].marcas.reduce((s,m)=>s+(Number(m.hist_q3_2025)||0),0))
         .forEach(([alias, cd]) => {
-          const cH24 = cd.marcas.reduce((s,m)=>s+(Number(m.hist_q3_2024)||0),0);
-          const cH25 = cd.marcas.reduce((s,m)=>s+(Number(m.hist_q3_2025)||0),0);
-          const cMeta= cd.marcas.reduce((s,m)=>s+(m.proyectado_q3_2026||0),0);
+          const cH24  = cd.marcas.reduce((s,m)=>s+(Number(m.hist_q3_2024)||0),0);
+          const cH25  = cd.marcas.reduce((s,m)=>s+(Number(m.hist_q3_2025)||0),0);
+          const cMeta = cd.marcas.reduce((s,m)=>s+(m.proyectado_q3_2026||0),0);
           if (cMeta < 10000) return;
           const cVar = cH25>0?(cMeta-cH25)/cH25:0;
-          vcmRows.push(['  CLIENTE', '  '+vend.replace(/^\d+-/,'').trim(), cd.nombre||alias, cd.cod||'', alias, '','', Math.round(cH24), Math.round(cH25), Math.round(cMeta), cVar]);
+          const [cJul, cAgo, cSep] = splitMeta(cMeta);
+          vcmRows.push(['  CLIENTE', '  '+vend.replace(/^\d+-/,'').trim(), cd.nombre||alias, cd.cod||'', alias, '','', Math.round(cH24), Math.round(cH25), cJul, cAgo, cSep, Math.round(cMeta), cVar]);
 
           cd.marcas
             .sort((a,b)=>(Number(b.hist_q3_2025)||0)-(Number(a.hist_q3_2025)||0))
@@ -4278,14 +4284,15 @@ async function _doExportExcel(exportBtn) {
               const mH24=Number(m.hist_q3_2024)||0, mH25=Number(m.hist_q3_2025)||0, mMeta=m.proyectado_q3_2026||0;
               if(mMeta<1000)return;
               const mVar=mH25>0?(mMeta-mH25)/mH25:0;
-              vcmRows.push(['    MARCA','    '+vend.replace(/^\d+-/,'').trim(), cd.nombre||alias, cd.cod||'', alias, m.portafolio||'', m.marca||'', Math.round(mH24), Math.round(mH25), Math.round(mMeta), mVar]);
+              const [mJul, mAgo, mSep] = splitMeta(mMeta);
+              vcmRows.push(['    MARCA','    '+vend.replace(/^\d+-/,'').trim(), cd.nombre||alias, cd.cod||'', alias, m.portafolio||'', m.marca||'', Math.round(mH24), Math.round(mH25), mJul, mAgo, mSep, Math.round(mMeta), mVar]);
             });
         });
     });
   } else {
-    vcmRows.push(['(Sin datos — cargá desde ⚡ Supabase para ver el desglose)', '','','','','','','','','']);
+    vcmRows.push(['(Sin datos — cargá desde ⚡ Supabase para ver el desglose)', '','','','','','','','','','','','']);
   }
-  XLSX.utils.book_append_sheet(wb, mkWS(vcmRows, [10,35,40,16,30,14,30,18,18,20,10], [7,8,9], [10]), '8_Vend_Cliente_Marca');
+  XLSX.utils.book_append_sheet(wb, mkWS(vcmRows, [10,35,40,16,30,14,30,18,18,16,16,16,18,10], [7,8,9,10,11,12], [13]), '8_Vend_Cliente_Marca');
 
   // ── HOJA 9: BASE DE DATOS (formato relacional, una fila por mes/cliente/marca/vendedor) ──
   if (exportBtn) exportBtn.textContent = '⏳ Generando Base de Datos...';
