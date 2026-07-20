@@ -1859,25 +1859,7 @@ function scheduleAutoSave() {
   clearTimeout(_autoSaveTimer);
   _autoSaveTimer = setTimeout(() => {
     try {
-      const snapshot = {
-        savedAt: new Date().toISOString(),
-        state: {
-          adjustments:    state.adjustments,
-          marcaOverrides: state.marcaOverrides,
-          adjVsQ22025:    state.adjVsQ22025,
-          reasignaciones: state.reasignaciones,
-          budgetTarget:   state.budgetTarget,
-          blendWeight:    state.blendWeight,
-          smoothOutliers: state.smoothOutliers,
-          smoothSigma:    state.smoothSigma,
-          budgetWeights:  state.budgetWeights,
-          filterPortfolio: state.filterPortfolio,
-          filterVendedor:  state.filterVendedor,
-          filterMarca:     state.filterMarca
-        },
-        rawDataModified: !!window._rawDataModified,
-        rawData: window._rawDataModified ? JSON.parse(JSON.stringify(RAW_DATA)) : null
-      };
+      const snapshot = buildSnapshot();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
       updateSaveIndicator(snapshot.savedAt);
     } catch(e) { /* localStorage lleno o no disponible — silencioso */ }
@@ -5400,6 +5382,15 @@ const VERSIONS_KEY = 'forecast_cofersa_versions_v1';
 const LOCK_KEY     = 'forecast_cofersa_locked_v1';
 
 function buildSnapshot() {
+  // rawData: excluir los campos pesados de runtime (vcmRaw ~50k filas,
+  // vendMarcaHist con series completas) — se recargan de Supabase al abrir.
+  // Sin esto, el snapshot supera la cuota de localStorage (~5MB) y el
+  // guardado falla silenciosamente.
+  let rawDataLight = null;
+  if (window._rawDataModified) {
+    const { vcmRaw, vendMarcaHist, ...rest } = RAW_DATA;
+    rawDataLight = JSON.parse(JSON.stringify(rest));
+  }
   return {
     savedAt: new Date().toISOString(),
     state: {
@@ -5417,8 +5408,16 @@ function buildSnapshot() {
       filterMarca:     state.filterMarca
     },
     rawDataModified: !!window._rawDataModified,
-    rawData: window._rawDataModified ? JSON.parse(JSON.stringify(RAW_DATA)) : null
+    rawData: rawDataLight
   };
+}
+
+function saveStateSilent() {
+  try {
+    const snapshot = buildSnapshot();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    updateSaveIndicator(snapshot.savedAt);
+  } catch(e) { /* cuota — el auto-save reintentará */ }
 }
 
 function saveState() {
@@ -5428,31 +5427,33 @@ function saveState() {
   const nombre = prompt('Nombre para esta versión (opcional):', '') || '';
   snapshot.nombre = nombre.trim();
 
+  let mainSaved = false, versionSaved = false, errMsg = '';
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    mainSaved = true;
+  } catch(e) { errMsg = e.message; }
 
-    // Agregar al historial de versiones (máx 8, sin RAW_DATA para ahorrar espacio
-    // salvo que haya sido modificado)
+  // Historial de versiones: SOLO ajustes (sin rawData) — liviano y siempre cabe
+  try {
+    const versionEntry = { ...snapshot, rawData: null };
     let versions = [];
     try { versions = JSON.parse(localStorage.getItem(VERSIONS_KEY) || '[]'); } catch(e) {}
-    versions.unshift(snapshot);
+    versions.unshift(versionEntry);
     while (versions.length > 8) versions.pop();
-    try {
-      localStorage.setItem(VERSIONS_KEY, JSON.stringify(versions));
-    } catch(e) {
-      // localStorage lleno → descartar rawData de versiones viejas y reintentar
-      versions.forEach((v,i) => { if (i > 0) { v.rawData = null; v.rawDataModified = false; } });
-      try { localStorage.setItem(VERSIONS_KEY, JSON.stringify(versions)); } catch(e2) {}
-    }
+    localStorage.setItem(VERSIONS_KEY, JSON.stringify(versions));
+    versionSaved = true;
+  } catch(e) { if (!errMsg) errMsg = e.message; }
 
-    const btn = document.getElementById('saveBtn');
-    const orig = btn.innerHTML;
+  const btn = document.getElementById('saveBtn');
+  const orig = btn.innerHTML;
+  if (mainSaved && versionSaved) {
     btn.innerHTML = '✓ Guardado';
     btn.classList.add('saved');
     setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('saved'); }, 2000);
     updateSaveIndicator(snapshot.savedAt);
-  } catch(e) {
-    alert('Error al guardar: ' + e.message);
+  } else {
+    alert('⚠️ Error al guardar: ' + (errMsg || 'espacio de almacenamiento insuficiente') +
+      '\n\nSugerencia: abrí el Historial de versiones y considerá depurar datos si el problema persiste.');
   }
 }
 
@@ -5778,7 +5779,7 @@ function saveReasignacion() {
   renderReasigList();
   document.getElementById('reasigForm').style.display = 'none';
   render();
-  saveState();
+  saveStateSilent();
 
   // Confirm to the user that the transfer actually happened, with real numbers
   const destProj = computeVendProjections()[a];
@@ -6074,7 +6075,7 @@ function editMarcaCell(td, marca, monthIdx) {
       state.adjustments.marcas[marca] = (newTotal / baseTotal - 1) * 100;
     }
     render();
-    saveState();
+    saveStateSilent();
   };
 
   input.addEventListener('blur', apply);
@@ -6089,7 +6090,7 @@ function clearMarcaOverride(marca, event) {
   delete state.marcaOverrides[marca];
   delete state.adjustments.marcas[marca];
   render();
-  saveState();
+  saveStateSilent();
 }
 
 function clearAllMarcaOverrides() {
@@ -6098,7 +6099,7 @@ function clearAllMarcaOverrides() {
   Object.keys(state.marcaOverrides).forEach(m => { delete state.adjustments.marcas[m]; });
   state.marcaOverrides = {};
   render();
-  saveState();
+  saveStateSilent();
   showToast('✅ Todos los ajustes de marcas eliminados');
 }
 
@@ -6173,7 +6174,7 @@ function applyMarcaBulkLoad() {
   });
 
   render();
-  saveState();
+  saveStateSilent();
   closeMarcaBulkLoad();
 
   let msg = `✅ ${valid.length} marca${valid.length!==1?'s':''} actualizada${valid.length!==1?'s':''} por carga masiva`;
