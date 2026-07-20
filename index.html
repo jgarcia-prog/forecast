@@ -1510,7 +1510,16 @@ function getMarcaVendorExtra(baseTotals, grandBaseTotal) {
   return vendorExtra;
 }
 
+// ── Caché de proyecciones ──
+// computeVendProjections es llamado varias veces por render (directamente y
+// dentro de computeMarcaProjections / computePortProjections / getBudgetMonthlyWeights).
+// El resultado solo cambia cuando cambia el estado de ajustes, así que se
+// cachea y se invalida explícitamente con invalidateProjCache() en cada mutación.
+let _projCache = null;
+function invalidateProjCache() { _projCache = null; }
+
 function computeVendProjections() {
+  if (_projCache) return _projCache;
   // Vendor's own base total (own adjustment only, sin nada de marcas)
   const baseTotals = {};
   let grandBaseTotal = [0, 0, 0];
@@ -1566,6 +1575,7 @@ function computeVendProjections() {
     });
   }
 
+  _projCache = result;
   return result;
 }
 
@@ -1817,7 +1827,42 @@ function getTotalProjection(vendProj) {
 }
 
 // ==================== RENDER ====================
+// Auto-guardado con debounce: cada mutación termina llamando render(),
+// así que aquí se invalida el caché de proyecciones y se agenda un guardado
+// automático 1.5s después del último cambio (sin spamear localStorage).
+let _autoSaveTimer = null;
+function scheduleAutoSave() {
+  clearTimeout(_autoSaveTimer);
+  _autoSaveTimer = setTimeout(() => {
+    try {
+      const snapshot = {
+        savedAt: new Date().toISOString(),
+        state: {
+          adjustments:    state.adjustments,
+          marcaOverrides: state.marcaOverrides,
+          adjVsQ22025:    state.adjVsQ22025,
+          reasignaciones: state.reasignaciones,
+          budgetTarget:   state.budgetTarget,
+          blendWeight:    state.blendWeight,
+          smoothOutliers: state.smoothOutliers,
+          smoothSigma:    state.smoothSigma,
+          budgetWeights:  state.budgetWeights,
+          filterPortfolio: state.filterPortfolio,
+          filterVendedor:  state.filterVendedor,
+          filterMarca:     state.filterMarca
+        },
+        rawDataModified: !!window._rawDataModified,
+        rawData: window._rawDataModified ? JSON.parse(JSON.stringify(RAW_DATA)) : null
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+      updateSaveIndicator(snapshot.savedAt);
+    } catch(e) { /* localStorage lleno o no disponible — silencioso */ }
+  }, 1500);
+}
+
 function render() {
+  invalidateProjCache();
+  scheduleAutoSave();
   const vendProj = computeVendProjections();
   const marcaProj = computeMarcaProjections();
   const portProj = computePortProjections();
